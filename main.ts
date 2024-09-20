@@ -8,9 +8,9 @@ import * as fuzzaldrin from 'fuzzaldrin-plus';
 const shellEscape = require('shell-escape');
 const execAsync = promisify(exec);
 
-interface FabricPluginSettings {
-    fabricConnectorApiUrl: string;
-    fabricConnectorApiKey: string;
+interface LLMPluginSettings {
+    llmConnectorApiUrl: string;
+    llmConnectorApiKey: string;
     outputFolder: string;
     customPatternsFolder: string;
     youtubeAutodetectEnabled: boolean;
@@ -18,13 +18,12 @@ interface FabricPluginSettings {
     defaultModel: string;
     defaultPostProcessingPattern: string;
     debug: boolean;
-    fabric2: boolean;
     tavilyApiKey: string;
 }
 
-const DEFAULT_SETTINGS: FabricPluginSettings = {
-    fabricConnectorApiUrl: '',
-    fabricConnectorApiKey: '',
+const DEFAULT_SETTINGS: LLMPluginSettings = {
+    llmConnectorApiUrl: '',
+    llmConnectorApiKey: '',
     outputFolder: '',
     customPatternsFolder: '',
     youtubeAutodetectEnabled: true,
@@ -32,12 +31,11 @@ const DEFAULT_SETTINGS: FabricPluginSettings = {
     defaultModel: 'gpt-4o',
     defaultPostProcessingPattern: '',
     debug: false,
-    fabric2: false,
     tavilyApiKey: ''
 };
 
-export default class FabricPlugin extends Plugin {
-    settings: FabricPluginSettings;
+export default class LLMPlugin extends Plugin {
+    settings: LLMPluginSettings;
     customPatternsFolder: TFolder | null = null;
     patterns: string[] = [];
     debug: boolean;
@@ -61,15 +59,15 @@ export default class FabricPlugin extends Plugin {
             }
         });
 
-        this.addSettingTab(new FabricSettingTab(this.app, this));
+        this.addSettingTab(new LLMSettingTab(this.app, this));
 
         this.registerView(
-            'fabric-view',
-            (leaf) => new FabricView(
+            'llm-view',
+            (leaf) => new LLMView(
                 leaf,
                 this,
-                this.settings.fabricConnectorApiUrl,
-                this.settings.fabricConnectorApiKey
+                this.settings.llmConnectorApiUrl,
+                this.settings.llmConnectorApiKey
             )
         );
 
@@ -79,7 +77,7 @@ export default class FabricPlugin extends Plugin {
             this.app.workspace.onLayoutReady(this.initLeaf.bind(this));
         }
 
-        this.addRibbonIcon('brain', 'Fabric', () => {
+        this.addRibbonIcon('brain', 'LLM', () => {
             this.activateView();
         });
     }
@@ -89,19 +87,19 @@ export default class FabricPlugin extends Plugin {
     log(message: string, ...args: any[]) {
         if (this.settings.debug && !this.isLogging) {
             this.isLogging = true;
-            console.log(`[Fabric Debug] ${message}`, ...args);
+            console.log(`[LLM Debug] ${message}`, ...args);
             this.isLogging = false;
         }
     }
 
     initLeaf(): void {
-        if (this.app.workspace.getLeavesOfType('fabric-view').length) {
+        if (this.app.workspace.getLeavesOfType('llm-view').length) {
             return;
         }
         const rightLeaf = this.app.workspace.getRightLeaf(false);
         if (rightLeaf) {
             rightLeaf.setViewState({
-                type: 'fabric-view',
+                type: 'llm-view',
                 active: true,
             });
         }
@@ -110,9 +108,9 @@ export default class FabricPlugin extends Plugin {
 
     updateLogging() {
         if (this.settings.debug) {
-            console.log('[Fabric] Debug mode enabled');
+            console.log('[LLM] Debug mode enabled');
         } else {
-            console.log('[Fabric] Debug mode disabled');
+            console.log('[LLM] Debug mode disabled');
         }
     }
 
@@ -178,7 +176,7 @@ export default class FabricPlugin extends Plugin {
         const patternName = fileName.replace('.md', '');
         const confirmDelete = await this.confirmPatternDeletion(patternName);
         if (confirmDelete) {
-            await this.deletePatternFromFabric(patternName);
+            await this.deletePatternFromLLM(patternName);
         }
     }
 
@@ -188,20 +186,20 @@ export default class FabricPlugin extends Plugin {
             return;
         }
     
-        const logoPath = path.join(this.manifest.dir, 'fabric-logo-gif.gif');
+        const logoPath = path.join(this.manifest.dir, 'llm-logo-gif.gif');
         const logoExists = await this.app.vault.adapter.exists(logoPath);
     
         if (!logoExists) {
             try {
-                const logoUrl = 'https://raw.githubusercontent.com/chasebank87/unofficial-fabric-plugin/main/fabric-logo-gif.gif';
+                const logoUrl = 'https://raw.githubusercontent.com/chasebank87/unofficial-llm-plugin/main/llm-logo-gif.gif';
                 const response = await fetch(logoUrl);
                 if (!response.ok) throw new Error('Failed to fetch logo');
                 const arrayBuffer = await response.arrayBuffer();
                 const buffer = new Uint8Array(arrayBuffer);
                 await this.app.vault.adapter.writeBinary(logoPath, buffer);
-                this.log('Fabric logo downloaded successfully');
+                this.log('LLM logo downloaded successfully');
             } catch (error) {
-                console.error('Error downloading Fabric logo:', error);
+                console.error('Error downloading LLM logo:', error);
             }
         }
     }
@@ -209,12 +207,12 @@ export default class FabricPlugin extends Plugin {
     async confirmPatternDeletion(patternName: string): Promise<boolean> {
         return new Promise((resolve) => {
             const notice = new Notice('', 0);
-            const container = notice.noticeEl.createDiv('fabric-confirm-deletion');
+            const container = notice.noticeEl.createDiv('llm-confirm-deletion');
             
             container.createEl('h3', { text: 'Confirm Pattern Deletion' });
-            container.createEl('p', { text: `Do you want to delete the pattern "${patternName}" and its folder from Fabric as well?` });
+            container.createEl('p', { text: `Do you want to delete the pattern "${patternName}" and its folder from LLM as well?` });
             
-            const buttonContainer = container.createDiv('fabric-confirm-buttons');
+            const buttonContainer = container.createDiv('llm-confirm-buttons');
             
             const yesButton = buttonContainer.createEl('button', { text: 'Yes' });
             yesButton.onclick = () => {
@@ -230,37 +228,34 @@ export default class FabricPlugin extends Plugin {
         });
     }
 
-    async deletePatternFromFabric(patternName: string) {
-    try {
-        const response = await fetch(this.settings.fabricConnectorApiUrl + '/delete_pattern', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': this.settings.fabricConnectorApiKey // Add the Fabric Connector API Key here
-            },
-            body: JSON.stringify({ pattern: patternName })
-        });
+    async deletePatternFromLLM(patternName: string) {
+        try {
+            const response = await fetch(this.settings.llmConnectorApiUrl + '/delete_template', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': this.settings.llmConnectorApiKey
+                },
+                body: JSON.stringify({ pattern: patternName })
+            });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            new Notice(result.message);
+            await this.updateLLMView();
+        } catch (error) {
+            console.error('Error deleting pattern from LLM:', error);
+            new Notice(`Failed to delete pattern "${patternName}" from LLM.`);
         }
-
-        const result = await response.json();
-        new Notice(result.message);
-        // Reload patterns after successful deletion
-        await this.updateFabricView();
-    } catch (error) {
-        console.error('Error deleting pattern from Fabric:', error);
-        new Notice(`Failed to delete pattern "${patternName}" from Fabric.`);
     }
-}
 
-
-    updateFabricView() {
-        // Find and update the FabricView if it exists
+    updateLLMView() {
         this.app.workspace.iterateAllLeaves((leaf) => {
-            if (leaf.view instanceof FabricView) {
-                (leaf.view as FabricView).loadPatterns();
+            if (leaf.view instanceof LLMView) {
+                (leaf.view as LLMView).loadPatterns();
             }
         });
     }
@@ -280,25 +275,25 @@ export default class FabricPlugin extends Plugin {
     }
 
   async activateView() {
-    this.app.workspace.detachLeavesOfType('fabric-view');
+    this.app.workspace.detachLeavesOfType('llm-view');
 
     const rightLeaf = this.app.workspace.getRightLeaf(false);
     if (rightLeaf) {
         rightLeaf.setViewState({
-            type: 'fabric-view',
+            type: 'llm-view',
             active: true,
         });
     }
 
     this.app.workspace.revealLeaf(
-        this.app.workspace.getLeavesOfType('fabric-view')[0]
+        this.app.workspace.getLeavesOfType('llm-view')[0]
     );
 }
 }
 
 
-class FabricView extends ItemView {
-    plugin: FabricPlugin;
+class LLMView extends ItemView {
+    plugin: LLMPlugin;
     patterns: string[] = [];
     patternDropdown: HTMLElement;
     searchInput: HTMLInputElement;
@@ -323,9 +318,10 @@ class FabricView extends ItemView {
     defaultModelDisplay: HTMLElement;
     modelNameSpan: HTMLSpanElement;
     syncButton: HTMLElement;
-    fabricConnectorApiUrl: string;
-    fabricConnectorApiKey: string;
+    llmConnectorApiUrl: string;
+    llmConnectorApiKey: string;
     selectedPatterns: string[] = [];
+    private patternInput: HTMLInputElement;
 
     loadingMessages: string[] = [
         "reticulating splines...",
@@ -364,19 +360,19 @@ class FabricView extends ItemView {
         "Charging Arc Reactor..."
     ];
 
-    constructor(leaf: WorkspaceLeaf, plugin: FabricPlugin, fabricConnectorApiUrl: string, fabricConnectorApiKey: string) {
+    constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin, llmConnectorApiUrl: string, llmConnectorApiKey: string) {
         super(leaf);
         this.plugin = plugin;
-        this.fabricConnectorApiUrl = fabricConnectorApiUrl;
-        this.fabricConnectorApiKey = fabricConnectorApiKey;
+        this.llmConnectorApiUrl = llmConnectorApiUrl;
+        this.llmConnectorApiKey = llmConnectorApiKey;
     }
 
     getViewType(): string {
-        return 'fabric-view';
+        return 'llm-view';
     }
 
     getDisplayText(): string {
-        return 'Fabric';
+        return 'LLM';
     }
 
     showCommunityPatternsModal() {
@@ -386,86 +382,86 @@ class FabricView extends ItemView {
     async onOpen() {
         this.containerEl = this.contentEl;
         this.containerEl.empty();
-        this.containerEl.addClass('fabric-view');
+        this.containerEl.addClass('llm-view');
 
 
-        this.logoContainer = this.containerEl.createEl('div', { cls: 'fabric-logo-container' });
+        this.logoContainer = this.containerEl.createEl('div', { cls: 'llm-logo-container' });
         let logoPath: string;
         if (this.plugin.manifest && this.plugin.manifest.dir) {
-            logoPath = path.join(this.plugin.manifest.dir, 'fabric-logo-gif.gif');
+            logoPath = path.join(this.plugin.manifest.dir, 'llm-logo-gif.gif');
             const logoSrc = this.app.vault.adapter.getResourcePath(logoPath);
         } else {
             // Fallback to the GitHub URL if the plugin directory is undefined
-            logoPath = 'https://raw.githubusercontent.com/chasebank87/unofficial-fabric-plugin/main/fabric-logo-gif.gif';
+            logoPath = 'https://raw.githubusercontent.com/chasebank87/unofficial-llm-plugin/main/llm-logo-gif.gif';
         }
 
         const logoSrc = this.app.vault.adapter.getResourcePath(logoPath);
         const logo = this.logoContainer.createEl('img', {
-            cls: 'fabric-logo',
+            cls: 'llm-logo',
             attr: { src: logoSrc }
         });
-        this.loadingText = this.logoContainer.createEl('h6', { cls: 'fabric-loading-text' });
+        this.loadingText = this.logoContainer.createEl('h6', { cls: 'llm-loading-text' });
 
-        const contentContainer = this.containerEl.createEl('div', { cls: 'fabric-content' });
+        const contentContainer = this.containerEl.createEl('div', { cls: 'llm-content' });
 
     // Add YouTube toggle and icon
-    const ytToggleContainer = contentContainer.createEl('div', { cls: 'fabric-yt-toggle-container' });
+    const ytToggleContainer = contentContainer.createEl('div', { cls: 'llm-yt-toggle-container' });
         
     // Add YouTube toggle and icon
-    const tsToggleContainer = contentContainer.createEl('div', { cls: 'fabric-ts-toggle-container' });
+    const tsToggleContainer = contentContainer.createEl('div', { cls: 'llm-ts-toggle-container' });
         
     // Create toggle for yt
     this.ytToggle = ytToggleContainer.createEl('div', { 
-        cls: `fabric-yt-toggle ${this.plugin.settings.youtubeAutodetectEnabled ? 'active' : ''}`
+        cls: `llm-yt-toggle ${this.plugin.settings.youtubeAutodetectEnabled ? 'active' : ''}`
     });
-    const toggleSlider = this.ytToggle.createEl('span', { cls: 'fabric-yt-toggle-slider' });
+    const toggleSlider = this.ytToggle.createEl('span', { cls: 'llm-yt-toggle-slider' });
     
         // Create text label
         const ytLabel = ytToggleContainer.createEl('span', { 
-            cls: 'fabric-yt-label',
+            cls: 'llm-yt-label',
             text: 'YouTube Links'
         });
     
     // Create toggle for ts
     this.tsToggle = tsToggleContainer.createEl('div', { 
-        cls: `fabric-ts-toggle ${this.plugin.settings.audioFileAutodetectEnabled ? 'active' : ''}`
+        cls: `llm-ts-toggle ${this.plugin.settings.audioFileAutodetectEnabled ? 'active' : ''}`
     });
-    const toggleSliderTS = this.tsToggle.createEl('span', { cls: 'fabric-ts-toggle-slider' });
+    const toggleSliderTS = this.tsToggle.createEl('span', { cls: 'llm-ts-toggle-slider' });
     
     // Create text label
     const tsLabel = tsToggleContainer.createEl('span', { 
-        cls: 'fabric-ts-label',
+        cls: 'llm-ts-label',
         text: 'Audio Files'
     });
 
 
-      contentContainer.createEl('h3', { text: 'fabric', cls: 'fabric-title' });
+      contentContainer.createEl('h3', { text: 'llm', cls: 'llm-title' });
 
-      this.buttonsContainer = contentContainer.createEl('div', { cls: 'fabric-buttons' });
-      const currentNoteBtn = this.buttonsContainer.createEl('button', { text: 'Current note', cls: 'fabric-button current-note' });
-      const clipboardBtn = this.buttonsContainer.createEl('button', { text: 'Clipboard', cls: 'fabric-button clipboard' });
+      this.buttonsContainer = contentContainer.createEl('div', { cls: 'llm-buttons' });
+      const currentNoteBtn = this.buttonsContainer.createEl('button', { text: 'Current note', cls: 'llm-button current-note' });
+      const clipboardBtn = this.buttonsContainer.createEl('button', { text: 'Clipboard', cls: 'llm-button clipboard' });
 
-      const tavilyBtn = this.buttonsContainer.createEl('button', { text: 'Tavily', cls: 'fabric-button tavily' });
+      const tavilyBtn = this.buttonsContainer.createEl('button', { text: 'Tavily', cls: 'llm-button tavily' });
       
         tavilyBtn.onclick = () => this.showTavilySearchModal();
-      currentNoteBtn.onclick = () => this.runFabric('current');
-      clipboardBtn.onclick = () => this.runFabric('clipboard');
+      currentNoteBtn.onclick = () => this.runLLM('current');
+      clipboardBtn.onclick = () => this.runLLM('clipboard');
 
   
-      const inputsContainer = contentContainer.createEl('div', { cls: 'fabric-inputs-container' });
+      const inputsContainer = contentContainer.createEl('div', { cls: 'llm-inputs-container' });
 
       this.outputNoteInput = inputsContainer.createEl('input', {
-          cls: 'fabric-input',
+          cls: 'llm-input',
           attr: { type: 'text', placeholder: 'Output note name' }
       });
   
       this.searchInput = inputsContainer.createEl('input', {
-          cls: 'fabric-input',
+          cls: 'llm-input',
           attr: { type: 'text', placeholder: 'Search patterns...' }
       });
   
       this.modelSearchInput = inputsContainer.createEl('input', {
-          cls: 'fabric-input',
+          cls: 'llm-input',
           attr: {
               type: 'text',
               placeholder: 'Search models...',
@@ -473,8 +469,8 @@ class FabricView extends ItemView {
           
       });
   
-      this.patternDropdown = contentContainer.createEl('div', { cls: 'fabric-dropdown' , attr: { id: 'pattern-dropdown', multiple: 'true' }} );
-      this.modelDropdown = contentContainer.createEl('div', { cls: 'fabric-dropdown', attr: { id: 'model-dropdown' }});
+      this.patternDropdown = contentContainer.createEl('div', { cls: 'llm-dropdown' , attr: { id: 'pattern-dropdown', multiple: 'true' }} );
+      this.modelDropdown = contentContainer.createEl('div', { cls: 'llm-dropdown', attr: { id: 'model-dropdown' }});
   
       this.searchInput.addEventListener('blur', () => {
         // Use setTimeout to allow click events on dropdown options to fire first
@@ -512,8 +508,16 @@ class FabricView extends ItemView {
           this.handleDropdownNavigation(event, this.modelDropdown, this.modelSearchInput);
       });
         
+    // Create the pattern input
+    const patternContainer = this.contentEl.createDiv('llm-inputs-container');
+    this.patternInput = patternContainer.createEl('input', {
+        type: 'text',
+        placeholder: 'Enter LLM template',
+        cls: 'llm-input'
+    });
+
     // Create the default model display
-    this.defaultModelDisplay = contentContainer.createEl('div', { cls: 'fabric-default-model' });
+    this.defaultModelDisplay = contentContainer.createEl('div', { cls: 'llm-default-model' });
     this.defaultModelDisplay.createSpan({ text: 'Powered by ' });
     this.modelNameSpan = this.defaultModelDisplay.createSpan({ cls: 'model-name' });
     this.updatePoweredByText(this.plugin.settings.defaultModel || 'No default model set');
@@ -557,14 +561,14 @@ class FabricView extends ItemView {
     });
       
     // Modify the click handlers for currentNoteBtn and clipboardBtn
-    currentNoteBtn.onclick = () => this.handleFabricRun('current');
-    clipboardBtn.onclick = () => this.handleFabricRun('clipboard');
+    currentNoteBtn.onclick = () => this.handleLLMRun('current');
+    clipboardBtn.onclick = () => this.handleLLMRun('clipboard');
         
 
-    const buttonContainer = contentContainer.createEl('div', { cls: 'fabric-button-container' });
+    const buttonContainer = contentContainer.createEl('div', { cls: 'llm-button-container' });
 
     this.refreshButton = buttonContainer.createEl('button', {
-        cls: 'fabric-icon-button fabric-refresh-button',
+        cls: 'llm-icon-button llm-refresh-button',
         attr: {
             'aria-label': 'Refresh patterns and models'
         }
@@ -577,7 +581,7 @@ class FabricView extends ItemView {
     };
 
     this.syncButton = buttonContainer.createEl('button', {
-        cls: 'fabric-icon-button fabric-sync-button',
+        cls: 'llm-icon-button llm-sync-button',
         attr: {
             'aria-label': 'Sync custom patterns'
         }
@@ -588,7 +592,7 @@ class FabricView extends ItemView {
     };
         
     this.communityPatternsBtn = contentContainer.createEl('button', {
-        cls: 'fabric-icon-button  community-patterns',
+        cls: 'llm-icon-button  community-patterns',
         attr: {
             'aria-label': 'Download community patterns'
         }
@@ -599,7 +603,7 @@ class FabricView extends ItemView {
   
 
 
-    this.progressSpinner = contentContainer.createEl('div', { cls: 'fabric-progress-spinner' });
+    this.progressSpinner = contentContainer.createEl('div', { cls: 'llm-progress-spinner' });
     
 
         await this.loadPatterns();
@@ -626,19 +630,19 @@ class FabricView extends ItemView {
         const modal = new Modal(this.app);
         modal.titleEl.setText('Tavily Search');
         const { contentEl } = modal;
-        contentEl.addClass('fabric-tavily-modal');
+        contentEl.addClass('llm-tavily-modal');
         const searchInput = contentEl.createEl('input', {
             type: 'text',
             placeholder: 'Enter your search query'
         });
-        searchInput.addClass('fabric-tavily-input');
+        searchInput.addClass('llm-tavily-input');
     
         const searchButton = contentEl.createEl('button', {
             text: 'Search',
             cls: 'mod-cta'
         });
 
-        searchButton.addClass('fabric-tavily-search-button');
+        searchButton.addClass('llm-tavily-search-button');
     
         searchButton.onclick = async () => {
             const query = searchInput.value.trim();
@@ -654,6 +658,11 @@ class FabricView extends ItemView {
     }
 
     async performTavilySearch(query: string) {
+        if (!this.plugin.settings.tavilyApiKey) {
+            new Notice('Tavily API Key is not set. Please set it in the plugin settings.');
+            return;
+        }
+
         this.logoContainer.addClass('loading');
         this.loadingText.setText('');
         this.animateLoadingText('Searching Tavily...');
@@ -680,7 +689,7 @@ class FabricView extends ItemView {
     
             const data = await response.json();
             const searchResult = JSON.stringify(data) + '\n';
-            await this.runFabricWithTavilyResult(searchResult);
+            await this.runLLMWithTavilyResult(searchResult);
         } catch (error) {
             console.error('Failed to perform Tavily search:', error);
             new Notice('Failed to perform Tavily search. Please check your API key and try again.');
@@ -690,38 +699,39 @@ class FabricView extends ItemView {
         }
     }
     
-    async runFabricWithTavilyResult(searchResult: string) {
+    async runLLMWithTavilyResult(searchResult: string) {
         if (this.plugin.settings.defaultPostProcessingPattern) {
             this.selectedPatterns.push(this.plugin.settings.defaultPostProcessingPattern);
         }
-        const pattern = this.selectedPatterns;
-        const model = this.getCurrentModel();
+        const template = this.patternInput.value.trim();
         let outputNoteName = this.outputNoteInput.value.trim();
-    
+        const model = this.getCurrentModel();
+
         if (!model) {
             new Notice('Please select a model or set a default model in settings before running.');
             return;
         }
-    
-        if (!pattern) {
-            new Notice('Please select a pattern first');
+
+        if (!template) {
+            new Notice('Please enter a template first');
             return;
         }
-    
+
         try {
-            const response = await fetch(this.plugin.settings.fabricConnectorApiUrl + '/fabric', {
+            const response = await fetch(this.plugin.settings.llmConnectorApiUrl + '/llm', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json',
-                    'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
                 },
                 body: JSON.stringify({
-                    pattern: pattern,
+                    prompt: searchResult,
                     model: model,
-                    data: searchResult,
-                    stream: true,
-                    goCompatibility: this.plugin.settings.fabric2
+                    template: template,
+                    options: [],
+                    json_mode: false,
+                    images: []
                 })
             });
     
@@ -730,19 +740,19 @@ class FabricView extends ItemView {
             }
     
             const responseData = await response.json();
-            const output = responseData.output;
+            const output = responseData.result;
     
             const newFile = await this.createOutputNote(output, outputNoteName);
-            new Notice('Fabric output generated successfully with Tavily search result');
+            new Notice('LLM output generated successfully with Tavily search result');
         } catch (error) {
-            console.error('Failed to run fabric with Tavily result:', error);
-            new Notice('Failed to run fabric with Tavily result. Please check your settings and try again.');
+            console.error('Failed to run llm with Tavily result:', error);
+            new Notice('Failed to run llm with Tavily result. Please check your settings and try again.');
         }
     }
 
-  async runFabric(source: 'current' | 'clipboard' | 'pattern') {
+  async runLLM(source: 'current' | 'clipboard' | 'pattern') {
     let data = '';
-    let pattern = this.selectedPatterns;
+    const template = this.patternInput.value.trim();
     let outputNoteName = this.outputNoteInput.value.trim();
     const model = this.getCurrentModel();
       
@@ -754,13 +764,13 @@ class FabricView extends ItemView {
     if (source === 'current') {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
-            data = await this.app.vault.read(activeFile) + '\n';
+            data = await this.app.vault.read(activeFile);
         }
     } else if (source === 'clipboard') {
-        data = await navigator.clipboard.readText() + '\n';
+        data = await navigator.clipboard.readText();
     } else if (source === 'pattern') {
-        if (!pattern) {
-            new Notice('Please select a pattern first');
+        if (!template) {
+            new Notice('Please enter a template first');
             return;
         }
     }
@@ -769,19 +779,20 @@ class FabricView extends ItemView {
     this.loadingText.setText('');
     this.animateLoadingText(this.getRandomLoadingMessage());
     try {
-        const response = await fetch(this.plugin.settings.fabricConnectorApiUrl + '/fabric', {
+        const response = await fetch(this.plugin.settings.llmConnectorApiUrl + '/llm', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                'X-API-Key': this.plugin.settings.llmConnectorApiKey
             },
             body: JSON.stringify({
-                pattern: pattern,
+                prompt: data,
                 model: model,
-                data: data,
-                stream: true,
-                goCompatibility: this.plugin.settings.fabric2
+                template: template,
+                options: [],
+                json_mode: false,
+                images: []
             })
         });
 
@@ -790,17 +801,17 @@ class FabricView extends ItemView {
         }
 
         const responseData = await response.json();
-        const output = responseData.output;
+        const output = responseData.result;
 
         const newFile = await this.createOutputNote(output, outputNoteName);
         this.logoContainer.removeClass('loading');
         this.loadingText.setText('');
-        new Notice('Fabric output generated successfully');
+        new Notice('LLM output generated successfully');
     } catch (error) {
-        console.error('Failed to run fabric:', error);
+        console.error('Failed to run llm:', error);
         this.logoContainer.removeClass('loading');
         this.loadingText.setText('');
-        new Notice('Failed to run fabric. Please check your settings and try again.');
+        new Notice('Failed to run llm. Please check your settings and try again.');
     }
 }
 
@@ -871,7 +882,7 @@ class FabricView extends ItemView {
     
         if (filteredPatterns.length === 0) {
             this.patternDropdown.createEl('div', {
-                cls: 'fabric-dropdown-option',
+                cls: 'llm-dropdown-option',
                 text: 'No patterns found'
             });
         } else {
@@ -882,14 +893,14 @@ class FabricView extends ItemView {
     
         if (this.patternDropdown.children.length > 0) {
             this.selectedOptionIndex = 0;
-            this.updateSelectedOption(this.patternDropdown.querySelectorAll('.fabric-dropdown-option'));
+            this.updateSelectedOption(this.patternDropdown.querySelectorAll('.llm-dropdown-option'));
         }
     }
 
 
     private addPatternOption(pattern: string, index: number) {
         const option = this.patternDropdown.createEl('div', {
-            cls: `fabric-dropdown-option ${index === 0 ? 'selected' : ''}`,
+            cls: `llm-dropdown-option ${index === 0 ? 'selected' : ''}`,
             text: pattern
         });
         
@@ -946,13 +957,13 @@ updateModelOptions(query: string) {
 
     if (filteredModels.length === 0 && query !== '') {
         this.modelDropdown.createEl('div', {
-            cls: 'fabric-dropdown-option',
+            cls: 'llm-dropdown-option',
             text: 'No models found'
         });
     } else {
         filteredModels.forEach((model, index) => {
             const option = this.modelDropdown.createEl('div', {
-                cls: `fabric-dropdown-option ${index === 0 ? 'selected' : ''}`,
+                cls: `llm-dropdown-option ${index === 0 ? 'selected' : ''}`,
                 text: model
             });
             option.addEventListener('click', () => {
@@ -992,13 +1003,12 @@ getCurrentModel(): string {
 
 async loadModels() {
     try {
-        const url = new URL(this.plugin.settings.fabricConnectorApiUrl + '/models');
-        url.searchParams.append('goCompatibility', this.plugin.settings.fabric2.toString());
+        const url = new URL(this.plugin.settings.llmConnectorApiUrl + '/models');
         const response = await fetch(url, {
             method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
             }
         });
         if (!response.ok) {
@@ -1032,7 +1042,7 @@ handleDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, input: HTM
 }
     
 handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, input: HTMLInputElement) {
-    const options = dropdown.querySelectorAll('.fabric-dropdown-option');
+    const options = dropdown.querySelectorAll('.llm-dropdown-option');
 
     switch (event.key) {
         case 'ArrowDown':
@@ -1105,13 +1115,12 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
 
     async loadPatterns() {
         try {
-            const url = new URL(this.plugin.settings.fabricConnectorApiUrl + '/patterns');
-        url.searchParams.append('goCompatibility', this.plugin.settings.fabric2.toString());
+            const url = new URL(this.plugin.settings.llmConnectorApiUrl + '/patterns');
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
                 },
             });
             if (!response.ok) {
@@ -1127,7 +1136,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
         }
     }
 
-    async handleFabricRun(source: 'current' | 'clipboard') {
+    async handleLLMRun(source: 'current' | 'clipboard') {
         if (this.plugin.settings.defaultPostProcessingPattern) {
             this.selectedPatterns.push(this.plugin.settings.defaultPostProcessingPattern);
         }
@@ -1136,7 +1145,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
             const paths = await this.extractAudioFiles(source);
             if (links.length > 0 && paths.length > 0) {
                 new Notice('Both YouTube links and audio files found. This is not supported yet. Try using clipboard.');
-                this.runFabric(source);
+                this.runLLM(source);
                 return;
             }
             if (links.length > 0) {
@@ -1144,27 +1153,27 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
             } else if (paths.length > 0) {
                 this.showAudioModal(paths, source);
             } else {
-                new Notice('No YouTube links or audio files found. Running Fabric normally.');
-            this.runFabric(source);
+                new Notice('No YouTube links or audio files found. Running LLM normally.');
+            this.runLLM(source);
             }
         } else if (this.tsToggle.classList.contains('active')) {
             const links = await this.extractAudioFiles(source);
             if (links.length > 0) {
                 this.showAudioModal(links, source);
             } else {
-                new Notice('No audio files found. Running Fabric normally.');
-                this.runFabric(source);
+                new Notice('No audio files found. Running LLM normally.');
+                this.runLLM(source);
             }
         } else if (this.ytToggle.classList.contains('active')) {
             const links = await this.extractYouTubeLinks(source);
             if (links.length > 0) {
                 this.showYouTubeModal(links, source);
             } else {
-                new Notice('No YouTube links found. Running Fabric normally.');
-                this.runFabric(source);
+                new Notice('No YouTube links found. Running LLM normally.');
+                this.runLLM(source);
                 }
         } else {
-            this.runFabric(source);  
+            this.runLLM(source);  
           } 
     }
 
@@ -1203,23 +1212,23 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
     
         let selectedIndex = 0;
     
-        const linkList = contentEl.createEl('div', { cls: 'fabric-yt-link-list' });
+        const linkList = contentEl.createEl('div', { cls: 'llm-yt-link-list' });
     
         const updateSelection = () => {
-            linkList.querySelectorAll('.fabric-yt-link').forEach((el, index) => {
+            linkList.querySelectorAll('.llm-yt-link').forEach((el, index) => {
                 el.classList.toggle('is-selected', index === selectedIndex);
             });
         };
     
         links.forEach((link, index) => {
-            const linkEl = linkList.createEl('div', { cls: 'fabric-yt-link', text: link });
+            const linkEl = linkList.createEl('div', { cls: 'llm-yt-link', text: link });
             linkEl.addEventListener('click', () => {
                 selectedIndex = index;
                 updateSelection();
             });
         });
     
-        const buttonContainer = contentEl.createEl('div', { cls: 'fabric-yt-modal-buttons' });
+        const buttonContainer = contentEl.createEl('div', { cls: 'llm-yt-modal-buttons' });
         const skipButton = buttonContainer.createEl('button', { text: 'Skip' });
         skipButton.addClass('skip-button');
         const runYTButton = buttonContainer.createEl('button', { text: 'Run' });
@@ -1227,7 +1236,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
 
         skipButton.addEventListener('click', () => {
             modal.close();
-            this.runFabric(source);
+            this.runLLM(source);
         });
     
         runYTButton.addEventListener('click', () => {
@@ -1278,23 +1287,23 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
     
         let selectedIndex = 0;
     
-        const fileList = contentEl.createEl('div', { cls: 'fabric-ts-link-list' });
+        const fileList = contentEl.createEl('div', { cls: 'llm-ts-link-list' });
     
         const updateSelection = () => {
-            fileList.querySelectorAll('.fabric-ts-link').forEach((el, index) => {
+            fileList.querySelectorAll('.llm-ts-link').forEach((el, index) => {
                 el.classList.toggle('is-selected', index === selectedIndex);
             });
         };
     
         files.forEach((file, index) => {
-            const linkEl = fileList.createEl('div', { cls: 'fabric-ts-link', text: file });
+            const linkEl = fileList.createEl('div', { cls: 'llm-ts-link', text: file });
             linkEl.addEventListener('click', () => {
                 selectedIndex = index;
                 updateSelection();
             });
         });
     
-        const buttonContainer = contentEl.createEl('div', { cls: 'fabric-ts-modal-buttons' });
+        const buttonContainer = contentEl.createEl('div', { cls: 'llm-ts-modal-buttons' });
         const skipButton = buttonContainer.createEl('button', { text: 'Skip' });
         skipButton.addClass('skip-button');
         const runTSButton = buttonContainer.createEl('button', { text: 'Run' });
@@ -1349,7 +1358,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
 
     async runYT(url: string) {
         let outputNoteName = this.outputNoteInput.value.trim();
-        const pattern = this.selectedPatterns
+        const pattern = this.patternInput.value.trim();
         const model = this.getCurrentModel();
       
         if (!model) {
@@ -1358,7 +1367,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
         }
         
         if (!pattern) {
-            new Notice('Please select a pattern first');
+            new Notice('Please enter a template first');
             return;
         }
 
@@ -1366,20 +1375,18 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
         this.loadingText.setText('');
         this.animateLoadingText(this.getRandomLoadingMessage());
     
-    
         try {
-            const response = await fetch(this.plugin.settings.fabricConnectorApiUrl + '/yt', {
+            const response = await fetch(this.plugin.settings.llmConnectorApiUrl + '/yt', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
                 },
                 body: JSON.stringify({
-                    pattern: pattern,
+                    template: pattern,
                     model: model,
                     url: url,
-                    stream: true,
-                    goCompatibility: this.plugin.settings.fabric2
+                    stream: false
                 }),
             });
     
@@ -1393,16 +1400,16 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
             const newFile = await this.createOutputNote(output, outputNoteName);
             this.logoContainer.removeClass('loading');
             this.loadingText.setText('');
-            new Notice('YouTube Fabric output generated successfully');
+            new Notice('YouTube LLM output generated successfully');
         } catch (error) {
-            console.error('Failed to run YouTube Fabric:', error);
-            new Notice('Failed to run YouTube Fabric. Please check your settings and try again.');
+            console.error('Failed to run YouTube LLM:', error);
+            new Notice('Failed to run YouTube LLM. Please check your settings and try again.');
         }
     }
 
     async runTS(path: string) {
         let outputNoteName = this.outputNoteInput.value.trim();
-        const pattern = this.selectedPatterns
+        const pattern = this.patternInput.value.trim();
         const model = this.getCurrentModel();
       
         if (!model) {
@@ -1411,7 +1418,7 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
         }
         
         if (!pattern) {
-            new Notice('Please select a pattern first');
+            new Notice('Please enter a template first');
             return;
         }
 
@@ -1420,18 +1427,17 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
         this.animateLoadingText(this.getRandomLoadingMessage());
     
         try {
-            const response = await fetch(this.plugin.settings.fabricConnectorApiUrl + '/ts', {
+            const response = await fetch(this.plugin.settings.llmConnectorApiUrl + '/ts', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
                 },
                 body: JSON.stringify({
                     pattern: pattern,
                     model: model,
                     path: path,
-                    stream: true,
-                    goCompatibility: this.plugin.settings.fabric2
+                    stream: true
                 }),
             });
     
@@ -1445,10 +1451,10 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
             const newFile = await this.createOutputNote(output, outputNoteName);
             this.logoContainer.removeClass('loading');
             this.loadingText.setText('');
-            new Notice('TS Fabric output generated successfully');
+            new Notice('TS LLM output generated successfully');
         } catch (error) {
-            console.error('Failed to run TS Fabric:', error);
-            new Notice('Failed to run TS Fabric. Please check your settings and try again.');
+            console.error('Failed to run TS LLM:', error);
+            new Notice('Failed to run TS LLM. Please check your settings and try again.');
         }
     }
     
@@ -1482,11 +1488,11 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
     }
     
     async updatePattern(name: string, content: string) {
-        const response = await fetch(this.plugin.settings.fabricConnectorApiUrl + '/update_pattern', {
+        const response = await fetch(this.plugin.settings.llmConnectorApiUrl + '/update_pattern', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-API-Key': this.plugin.settings.fabricConnectorApiKey
+                'X-API-Key': this.plugin.settings.llmConnectorApiKey
             },
             body: JSON.stringify({
                 pattern: name,
@@ -1506,93 +1512,52 @@ handlePatternDropdownNavigation(event: KeyboardEvent, dropdown: HTMLElement, inp
     
 }
 
-class FabricSettingTab extends PluginSettingTab {
-    plugin: FabricPlugin;
+class LLMSettingTab extends PluginSettingTab {
+    plugin: LLMPlugin;
 
-    constructor(app: App, plugin: FabricPlugin) {
+    constructor(app: App, plugin: LLMPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
 
     display(): void {
-        const { containerEl } = this;
+        const {containerEl} = this;
 
         containerEl.empty();
 
-        // Instructions for Fabric Connector API URL and Key
-        containerEl.createEl('p', {
-            text: 'To set up the Fabric Connector:',
-            cls: 'fabric-settings-instruction'
-        });
-        containerEl.createEl('ol', {cls: 'fabric-settings-list'}, (ol) => {
-            ol.createEl('li', {text: 'Click the Fabric Connector icon (brain icon) in your system tray'});
-            ol.createEl('li', {text: 'For the API URL: Click "Open API Docs" and copy the URL from your browser, removing "/docs" from the end'});
-            ol.createEl('li', {text: 'For the API Key: Click "Copy API Key"'});
-        });
+        containerEl.createEl('h2', {text: 'LLM Settings'});
 
-        // Fabric Connector API URL input
         new Setting(containerEl)
-            .setName('Fabric Connector API URL')
-            .setDesc('Enter the URL for the Fabric Connector API')
-            .addDropdown(dropdown => {
-                dropdown
-                    .addOption('http://', 'http://')
-                    .addOption('https://', 'https://')
-                    .setValue(this.plugin.settings.fabricConnectorApiUrl.startsWith('https://') ? 'https://' : 'http://')
-                    .onChange(async (value) => {
-                        const domain = this.plugin.settings.fabricConnectorApiUrl.replace(/^https?:\/\//, '');
-                        this.plugin.settings.fabricConnectorApiUrl = value + domain;
-                        await this.plugin.saveSettings();
-                    });
-            })
-            .addText(text => {
-                const domain = this.plugin.settings.fabricConnectorApiUrl.replace(/^https?:\/\//, '');
-                text
-                    .setPlaceholder('Enter domain')
-                    .setValue(domain)
-                    .onChange(async (value) => {
-                        // Remove any slashes from the input
-                        const cleanValue = value.replace(/\//g, '');
-                        const protocol = this.plugin.settings.fabricConnectorApiUrl.startsWith('https://') ? 'https://' : 'http://';
-                        this.plugin.settings.fabricConnectorApiUrl = protocol + cleanValue;
-                        await this.plugin.saveSettings();
-                        // Update the text field to show the cleaned value
-                        text.setValue(cleanValue);
-                    });
-            });
-
-        // Fabric Connector API Key input
-        new Setting(containerEl)
-            .setName('Fabric Connector API Key')
-            .setDesc('Enter your API key for the Fabric Connector')
+            .setName('LLM Connector API URL')
+            .setDesc('Enter the URL for the LLM Connector API')
             .addText(text => text
-                .setPlaceholder('Enter API Key')
-                .setValue(this.plugin.settings.fabricConnectorApiKey || '')
+                .setPlaceholder('Enter URL')
+                .setValue(this.plugin.settings.llmConnectorApiUrl)
                 .onChange(async (value) => {
-                    this.plugin.settings.fabricConnectorApiKey = value;
+                    this.plugin.settings.llmConnectorApiUrl = value;
                     await this.plugin.saveSettings();
-                }))
-            .addButton(button => button
-                .setButtonText('Test API Key')
-                .onClick(async () => {
-                    await this.testFabricConnectorApiKey();
                 }));
 
+        new Setting(containerEl)
+            .setName('LLM Connector API Key')
+            .setDesc('Enter your LLM Connector API Key')
+            .addText(text => text
+                .setPlaceholder('Enter API Key')
+                .setValue(this.plugin.settings.llmConnectorApiKey)
+                .onChange(async (value) => {
+                    this.plugin.settings.llmConnectorApiKey = value;
+                    await this.plugin.saveSettings();
+                }));
 
         new Setting(containerEl)
             .setName('Tavily API Key')
             .setDesc('Enter your Tavily API key')
             .addText(text => text
                 .setPlaceholder('Enter API Key')
-                .setValue(this.plugin.settings.tavilyApiKey || '')
+                .setValue(this.plugin.settings.tavilyApiKey)
                 .onChange(async (value) => {
                     this.plugin.settings.tavilyApiKey = value;
                     await this.plugin.saveSettings();
-                }))
-            .addButton(button => button
-                .setButtonText('Test API Key')
-                .onClick(async () => {
-                    await this.testTavilyApiKey();
                 }));
 
         new Setting(containerEl)
@@ -1620,7 +1585,7 @@ class FabricSettingTab extends PluginSettingTab {
         
         new Setting(containerEl)
         .setName('Default Model')
-        .setDesc('The default model to use when running Fabric')
+        .setDesc('The default model to use when running LLM')
         .addText(text => text
             .setPlaceholder('Enter default model')
             .setValue(this.plugin.settings.defaultModel)
@@ -1631,24 +1596,13 @@ class FabricSettingTab extends PluginSettingTab {
         
         new Setting(containerEl)
         .setName('Default Post Processing Pattern')
-        .setDesc('This pattern will be appended to selected patterns when running Fabric')
+        .setDesc('This pattern will be appended to selected patterns when running LLM')
         .addText(text => text
             .setPlaceholder('Enter pattern name')
             .setValue(this.plugin.settings.defaultPostProcessingPattern)
             .onChange(async (value) => {
                 this.plugin.settings.defaultPostProcessingPattern = value;
                 await this.plugin.saveSettings();
-            }));
-        
-        new Setting(containerEl)
-        .setName('Fabric 2.0 Compatibility Mode')
-        .setDesc('Enable comptaibility mode for Fabric 2.0')
-        .addToggle(toggle => toggle
-            .setValue(this.plugin.settings.fabric2)
-            .onChange(async (value) => {
-                this.plugin.settings.fabric2 = value;
-                await this.plugin.saveSettings();
-                this.plugin.updateLogging();
             }));
 
         new Setting(containerEl)
@@ -1662,80 +1616,15 @@ class FabricSettingTab extends PluginSettingTab {
                     this.plugin.updateLogging();
                 }));
     }
-
-    async testFabricConnectorApiKey() {
-        const fabricConnectorApiUrl = this.plugin.settings.fabricConnectorApiUrl;
-        const url = new URL(this.plugin.settings.fabricConnectorApiUrl + '/models');
-        url.searchParams.append('goCompatibility', this.plugin.settings.fabric2.toString());
-        const apiKey = this.plugin.settings.fabricConnectorApiKey;
-
-        if (!fabricConnectorApiUrl || !apiKey) {
-            new Notice('Please enter both Fabric Connector API URL and API Key');
-            return;
-        }
-
-        try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': apiKey
-                }
-            });
-
-            if (response.ok) {
-                new Notice('Fabric Connector API Key is valid');
-            } else {
-                new Notice('Invalid Fabric Connector API Key');
-            }
-        } catch (error) {
-            console.error('Error testing Fabric Connector API Key:', error);
-            new Notice('Error testing Fabric Connector API Key. Check console for details.');
-        }
-
-    }
-
-    async testTavilyApiKey() {
-        const apiKey = this.plugin.settings.tavilyApiKey;
-
-        if (!this.plugin.settings.tavilyApiKey) {
-            new Notice('Please enter a Tavily API Key');
-            return;
-        }
-
-        try {
-            const response = await fetch('https://api.tavily.com/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    query: 'Test Query',
-                    max_results: 1,
-                    api_key: apiKey
-                })
-            });
-
-            if (response.ok) {
-                new Notice('Tavily API Key is valid');
-            } else {
-                new Notice('Invalid Tavily API Key');
-            }
-        } catch (error) {
-            console.error('Error testing Tavily API Key:', error);
-            new Notice('Error testing Tavily API Key. Check console for details.');
-        }
-    }
 }
 
-
 class CommunityPatternsModal extends Modal {
-  plugin: FabricPlugin;
+  plugin: LLMPlugin;
   patterns: any[];
   searchInput: HTMLInputElement;
   resultsContainer: HTMLElement;
 
-  constructor(app: App, plugin: FabricPlugin) {
+  constructor(app: App, plugin: LLMPlugin) {
     super(app);
     this.plugin = plugin;
   }
@@ -1754,13 +1643,13 @@ class CommunityPatternsModal extends Modal {
       .setButtonText('Update All')
       .onClick(() => this.updateAllPatterns());
     //setIcon(updateAllButton.buttonEl, 'refresh-cw'); // Use an appropriate icon
-      updateAllButton.buttonEl.className = 'fabric-button community-patterns-update-all';
+      updateAllButton.buttonEl.className = 'llm-button community-patterns-update-all';
       
       const refreshPatternsButton = new ButtonComponent(buttonContainer)
       .setButtonText('Refresh Patterns')
       .onClick(() => this.refreshPatterns());
     //setIcon(refreshPatternsButton.buttonEl, 'refresh-cw'); // Use an appropriate icon
-    refreshPatternsButton.buttonEl.className = 'fabric-button community-patterns-refresh';
+    refreshPatternsButton.buttonEl.className = 'llm-button community-patterns-refresh';
 
 
     this.searchInput = contentEl.createEl('input', {
@@ -1778,7 +1667,7 @@ class CommunityPatternsModal extends Modal {
 
   async fetchPatterns() {
     try {
-      const response = await fetch('https://raw.githubusercontent.com/chasebank87/fabric-patterns/main/patterns.json');
+      const response = await fetch('https://raw.githubusercontent.com/chasebank87/llm-patterns/main/patterns.json');
       if (!response.ok) {
         throw new Error('Failed to fetch patterns');
       }
@@ -1836,8 +1725,8 @@ class CommunityPatternsModal extends Modal {
         const patternInfo = patternEl.createEl('div', { cls: 'community-pattern-info' });
         patternInfo.createEl('div', { text: pattern.name, cls: 'community-pattern-title' });
             patternInfo.createEl('div', { text: pattern.description, cls: 'community-pattern-description' });
-            patternInfo.createEl('em', {text: `by ${pattern.author}`, cls: 'community-fabric-author'});
-            patternInfo.createEl('small', { text: `For models: ${pattern.for_models}`, cls: 'community-fabric-models' });
+            patternInfo.createEl('em', {text: `by ${pattern.author}`, cls: 'community-llm-author'});
+            patternInfo.createEl('small', { text: `For models: ${pattern.for_models}`, cls: 'community-llm-models' });
     
 
         const isInstalled = await this.isPatternInstalled(pattern.name);
