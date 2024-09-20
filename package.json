@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-fabric-plugin",
+  "name": "obsidian-llm-plugin",
   "version": "1.0.0",
-  "description": "Fabric integration for Obsidian",
+  "description": "LLM Command Tool integration for Obsidian",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
