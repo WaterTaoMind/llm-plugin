@@ -87,3 +87,29 @@
   cursor: pointer;
   font-size: 0.8rem;
 }
+
+.llm-image-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.llm-image-input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.llm-add-image-button {
+  align-self: flex-start;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
