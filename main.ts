@@ -101,6 +101,9 @@ class LLMView extends ItemView {
     private sendButton: HTMLButtonElement;
     private patternInput: HTMLInputElement;
     private modelInput: HTMLInputElement;
+    private imageInputContainer: HTMLElement;
+    private imageInputs: HTMLInputElement[] = [];
+    private addImageButton: HTMLButtonElement;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -134,20 +137,29 @@ class LLMView extends ItemView {
 
         this.modelInput = chatContainer.createEl('input', {
             type: 'text',
-            placeholder: 'Enter model ID...',
+            placeholder: 'Enter model name',
             cls: 'llm-model-input'
         });
 
         this.patternInput = chatContainer.createEl('input', {
             type: 'text',
-            placeholder: 'Enter LLM template (optional)',
+            placeholder: 'Enter LLM template',
             cls: 'llm-pattern-input'
         });
+
+        this.imageInputContainer = chatContainer.createDiv({ cls: 'llm-image-input-container' });
+        this.addImageInput();
+
+        this.addImageButton = chatContainer.createEl('button', {
+            text: 'Add Image',
+            cls: 'llm-add-image-button'
+        });
+        this.addImageButton.addEventListener('click', () => this.addImageInput());
 
         this.chatHistory = chatContainer.createDiv({ cls: 'llm-chat-history' });
 
         this.promptInput = chatContainer.createEl('textarea', {
-            placeholder: 'Enter your prompt...',
+            placeholder: 'Enter your message...',
             cls: 'llm-prompt-input'
         });
 
@@ -155,14 +167,24 @@ class LLMView extends ItemView {
             text: 'Send',
             cls: 'llm-send-button'
         });
-        this.sendButton.onclick = () => this.sendPrompt();
+        this.sendButton.addEventListener('click', () => this.sendMessage());
     }
 
-    private async sendPrompt() {
-        const prompt = this.promptInput.value;
+    private addImageInput() {
+        const imageInput = this.imageInputContainer.createEl('input', {
+            type: 'text',
+            placeholder: 'Enter image path',
+            cls: 'llm-image-input'
+        });
+        this.imageInputs.push(imageInput);
+    }
+
+    private async sendMessage() {
+        const conversationId = this.conversationIdInput.value;
         const model = this.modelInput.value;
         const template = this.patternInput.value;
-        const conversationId = this.conversationIdInput.value;
+        const prompt = this.promptInput.value;
+        const images = this.imageInputs.map(input => input.value).filter(path => path.trim() !== '');
 
         if (!model) {
             new Notice('Please enter a model ID before sending.');
@@ -171,16 +193,17 @@ class LLMView extends ItemView {
 
         try {
             const options = conversationId ? ["-c", "--cid", conversationId] : [];
-            const response = await this.runLLM(prompt, template, model, options);
+            const response = await this.runLLM(prompt, template, model, options, images);
             this.appendToChatHistory(prompt, response);
             this.promptInput.value = '';
+            this.imageInputs.forEach(input => input.value = '');
         } catch (error) {
             console.error('Failed to get LLM response:', error);
             new Notice('Failed to get LLM response. Please try again.');
         }
     }
 
-    private async runLLM(prompt: string, template: string, model: string, options: string[]): Promise<string> {
+    private async runLLM(prompt: string, template: string, model: string, options: string[], images: string[]): Promise<string> {
         try {
             const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/llm`, {
                 method: 'POST',
@@ -193,7 +216,9 @@ class LLMView extends ItemView {
                     prompt,
                     template,
                     model,
-                    options
+                    options,
+                    json_mode: false,
+                    images
                 })
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -208,7 +233,7 @@ class LLMView extends ItemView {
     private appendToChatHistory(prompt: string, response: string) {
         const promptEl = this.chatHistory.createDiv({ cls: 'llm-chat-prompt', text: prompt });
         const responseEl = this.chatHistory.createDiv({ cls: 'llm-chat-response', text: response });
-
+        
         const appendButton = responseEl.createEl('button', {
             text: 'Append to Note',
             cls: 'llm-append-button'
