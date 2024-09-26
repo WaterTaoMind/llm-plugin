@@ -20,15 +20,94 @@
   gap: 0.5rem;
 }
 
-.llm-conversation-id-input,
-.llm-model-input,
-.llm-pattern-input {
+.llm-conversation-id-input {
   width: 100%;
   padding: 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
   background-color: var(--background-primary);
   color: var(--text-normal);
+}
+
+.llm-model-template-container {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.llm-model-input {
+  flex: 0 0 30%; /* Adjust this value to change the model input width */
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.llm-pattern-input {
+  flex: 1; /* This will make the template input take the remaining space */
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.llm-image-input-container {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.llm-image-input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.llm-add-image-button {
+  padding: 0.5rem;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.llm-prompt-input-container {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  margin-bottom: 1rem;
+}
+
+.llm-prompt-input {
+  flex-grow: 1;
+  min-height: 80px;
+  padding: 0.5rem;
+  border: 2px solid var(--interactive-accent);
+  border-radius: 4px;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  resize: vertical;
+  font-size: 14px;
+}
+
+.llm-send-button {
+  align-self: flex-end;
+  padding: 0.5rem;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .llm-chat-history {
@@ -40,76 +119,68 @@
   background-color: var(--background-secondary);
 }
 
-.llm-chat-prompt,
-.llm-chat-response {
-  margin-bottom: 0.5rem;
-  padding: 0.5rem;
-  border-radius: 4px;
+.llm-chat-message {
+  margin-bottom: 1rem;
 }
 
-.llm-chat-prompt {
-  background-color: var(--background-modifier-form-field);
-  align-self: flex-end;
-}
-
-.llm-chat-response {
-  background-color: var(--background-primary);
-  align-self: flex-start;
-}
-
-.llm-prompt-input {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background-color: var(--background-primary);
-  color: var(--text-normal);
-  resize: vertical;
-}
-
-.llm-send-button {
-  align-self: flex-end;
-  padding: 0.5rem 1rem;
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.llm-append-button {
-  margin-top: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.llm-image-input-container {
+.llm-chat-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  align-items: flex-start;
 }
 
-.llm-image-input {
-  width: 100%;
+.llm-chat-icon {
+  align-self: flex-start;
+  width: 30px;
+  height: 30px;
+  margin-right: 0.5rem;
+  background-color: #7E6BC4; /* Purple background */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.llm-chat-icon svg {
+  width: 20px;
+  height: 20px;
+  color: white; /* White icon color for contrast */
+}
+
+.llm-chat-text {
   padding: 0.5rem;
-  border: 1px solid var(--border-color);
   border-radius: 4px;
   background-color: var(--background-primary);
-  color: var(--text-normal);
 }
 
-.llm-add-image-button {
-  align-self: flex-start;
-  padding: 0.25rem 0.5rem;
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
+.llm-chat-user-message .llm-chat-text {
+  background-color: var(--background-modifier-form-field);
+}
+
+.llm-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.llm-action-button {
+  background: none;
   border: none;
-  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  padding: 5px;
+  margin-left: 5px;
+  color: var(--text-muted);
+}
+
+.llm-action-button:hover,
+.llm-send-button:hover,
+.llm-add-image-button:hover {
+  color: var(--text-accent);
+}
+
+.llm-action-button svg,
+.llm-send-button svg,
+.llm-add-image-button svg {
+  width: 20px;
+  height: 20px;
 }

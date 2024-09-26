@@ -1,6 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice, ItemView } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon } from './Icons';
 
 const execAsync = promisify(exec);
 
@@ -101,8 +102,7 @@ class LLMView extends ItemView {
     private sendButton: HTMLButtonElement;
     private patternInput: HTMLInputElement;
     private modelInput: HTMLInputElement;
-    private imageInputContainer: HTMLElement;
-    private imageInputs: HTMLInputElement[] = [];
+    private imageInput: HTMLInputElement;
     private addImageButton: HTMLButtonElement;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
@@ -135,48 +135,65 @@ class LLMView extends ItemView {
             cls: 'llm-conversation-id-input'
         });
 
-        this.modelInput = chatContainer.createEl('input', {
+        const modelTemplateContainer = chatContainer.createDiv({ cls: 'llm-model-template-container' });
+        this.modelInput = modelTemplateContainer.createEl('input', {
             type: 'text',
             placeholder: 'Enter model name',
             cls: 'llm-model-input'
         });
-
-        this.patternInput = chatContainer.createEl('input', {
+        this.patternInput = modelTemplateContainer.createEl('input', {
             type: 'text',
             placeholder: 'Enter LLM template',
             cls: 'llm-pattern-input'
         });
 
-        this.imageInputContainer = chatContainer.createDiv({ cls: 'llm-image-input-container' });
-        this.addImageInput();
-
-        this.addImageButton = chatContainer.createEl('button', {
-            text: 'Add Image',
-            cls: 'llm-add-image-button'
-        });
-        this.addImageButton.addEventListener('click', () => this.addImageInput());
-
-        this.chatHistory = chatContainer.createDiv({ cls: 'llm-chat-history' });
-
-        this.promptInput = chatContainer.createEl('textarea', {
-            placeholder: 'Enter your message...',
-            cls: 'llm-prompt-input'
-        });
-
-        this.sendButton = chatContainer.createEl('button', {
-            text: 'Send',
-            cls: 'llm-send-button'
-        });
-        this.sendButton.addEventListener('click', () => this.sendMessage());
-    }
-
-    private addImageInput() {
-        const imageInput = this.imageInputContainer.createEl('input', {
+        const imageInputContainer = chatContainer.createDiv({ cls: 'llm-image-input-container' });
+        this.imageInput = imageInputContainer.createEl('input', {
             type: 'text',
             placeholder: 'Enter image path',
             cls: 'llm-image-input'
         });
-        this.imageInputs.push(imageInput);
+        this.addImageButton = imageInputContainer.createEl('button', {
+            cls: 'llm-add-image-button'
+        });
+        this.addImageButton.innerHTML = PlusIcon;
+        this.addImageButton.addEventListener('click', () => this.addImageInput());
+
+        const promptInputContainer = chatContainer.createDiv({ cls: 'llm-prompt-input-container' });
+        this.promptInput = promptInputContainer.createEl('textarea', {
+            placeholder: 'Type your message here...',
+            cls: 'llm-prompt-input'
+        });
+
+        this.sendButton = promptInputContainer.createEl('button', {
+            cls: 'llm-send-button'
+        });
+        this.sendButton.innerHTML = SendIcon;
+        this.sendButton.addEventListener('click', () => this.sendMessage());
+
+        this.chatHistory = chatContainer.createDiv({ cls: 'llm-chat-history' });
+    }
+
+    private addImageInput() {
+        if (this.imageInput && this.imageInput.parentNode) {
+            const imageInput = this.imageInput.parentNode.createEl('input', {
+                type: 'text',
+                placeholder: 'Enter image path',
+                cls: 'llm-image-input'
+            });
+            imageInput.addEventListener('input', () => this.updateAddImageButtonVisibility());
+        }
+        this.updateAddImageButtonVisibility();
+    }
+
+    private updateAddImageButtonVisibility() {
+        const images = Array.from(this.imageInput?.parentNode?.children || [])
+            .map(input => (input as HTMLInputElement).value)
+            .filter(path => path.trim() !== '');
+        
+        if (this.addImageButton) {
+            this.addImageButton.style.display = images.length < 5 ? 'block' : 'none';
+        }
     }
 
     private async sendMessage() {
@@ -184,7 +201,9 @@ class LLMView extends ItemView {
         const model = this.modelInput.value;
         const template = this.patternInput.value;
         const prompt = this.promptInput.value;
-        const images = this.imageInputs.map(input => input.value).filter(path => path.trim() !== '');
+        const images = Array.from(this.imageInput?.parentNode?.children || [])
+            .map(input => (input as HTMLInputElement).value)
+            .filter(path => path.trim() !== '');
 
         if (!model) {
             new Notice('Please enter a model ID before sending.');
@@ -196,7 +215,10 @@ class LLMView extends ItemView {
             const response = await this.runLLM(prompt, template, model, options, images);
             this.appendToChatHistory(prompt, response);
             this.promptInput.value = '';
-            this.imageInputs.forEach(input => input.value = '');
+            if (this.imageInput && this.imageInput.parentNode) {
+                Array.from(this.imageInput.parentNode.children).forEach(input => (input as HTMLInputElement).value = '');
+            }
+            this.updateAddImageButtonVisibility();
         } catch (error) {
             console.error('Failed to get LLM response:', error);
             new Notice('Failed to get LLM response. Please try again.');
@@ -231,13 +253,33 @@ class LLMView extends ItemView {
     }
 
     private appendToChatHistory(prompt: string, response: string) {
-        const promptEl = this.chatHistory.createDiv({ cls: 'llm-chat-prompt', text: prompt });
-        const responseEl = this.chatHistory.createDiv({ cls: 'llm-chat-response', text: response });
+        const promptEl = this.chatHistory.createDiv({ cls: 'llm-chat-message llm-chat-user-message' });
+        promptEl.innerHTML = `
+            <div class="llm-chat-content">
+                <div class="llm-chat-icon">${UserIcon}</div>
+                <div class="llm-chat-text">${prompt}</div>
+            </div>
+        `;
+
+        const responseEl = this.chatHistory.createDiv({ cls: 'llm-chat-message llm-chat-ai-message' });
+        responseEl.innerHTML = `
+            <div class="llm-chat-content">
+                <div class="llm-chat-icon">${ChatbotIcon}</div>
+                <div class="llm-chat-text">${response}</div>
+            </div>
+        `;
         
-        const appendButton = responseEl.createEl('button', {
-            text: 'Append to Note',
-            cls: 'llm-append-button'
-        });
+        const actionContainer = responseEl.createDiv({ cls: 'llm-message-actions' });
+        
+        const copyButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        copyButton.innerHTML = CopyClipboardIcon;
+        copyButton.onclick = () => {
+            navigator.clipboard.writeText(response);
+            new Notice('Copied to clipboard');
+        };
+
+        const appendButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        appendButton.innerHTML = SaveAsNoteIcon;
         appendButton.onclick = () => this.appendToCurrentNote(response);
 
         this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
