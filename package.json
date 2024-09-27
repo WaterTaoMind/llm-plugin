@@ -13,6 +13,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/fuzzaldrin-plus": "^0.6.5",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^16.11.6",
     "@types/semver": "^7.5.8",
     "@types/shell-escape": "^0.2.3",
@@ -29,6 +30,7 @@
     "@types/he": "^1.2.3",
     "@types/react": "^18.3.9",
     "he": "^1.2.0",
+    "markdown-it": "^14.1.0",
     "react": "^18.3.1",
     "shell-escape": "^0.2.0"
   }

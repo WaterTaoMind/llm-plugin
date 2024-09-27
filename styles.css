@@ -21,7 +21,7 @@
 }
 
 .llm-conversation-id-input {
-  width: 100%;
+  flex-grow: 1;
   padding: 0.5rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -151,6 +151,30 @@
   padding: 0.5rem;
   border-radius: 4px;
   background-color: var(--background-primary);
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.llm-chat-text p {
+  margin: 0 0 1em 0;
+}
+
+.llm-chat-text p:last-child {
+  margin-bottom: 0;
+}
+
+.llm-chat-text pre {
+  background-color: var(--background-secondary);
+  padding: 0.5em;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.llm-chat-text code {
+  background-color: var(--background-secondary);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.85em;
 }
 
 .llm-chat-user-message .llm-chat-text {
@@ -183,4 +207,28 @@
 .llm-add-image-button svg {
   width: 20px;
   height: 20px;
+}
+
+.llm-cid-container {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  align-items: center; /* This ensures vertical alignment */
+}
+
+.llm-get-cid-button {
+  padding: 0.5rem;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; /* Prevents the button from shrinking */
+}
+
+.llm-get-cid-button:hover {
+  background-color: var(--interactive-accent-hover);
 }
