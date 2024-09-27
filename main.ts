@@ -1,7 +1,8 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice, ItemView } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon } from './Icons';
+import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon, GetCidIcon } from './Icons';
+import MarkdownIt from 'markdown-it';
 
 const execAsync = promisify(exec);
 
@@ -33,10 +34,11 @@ const DEFAULT_SETTINGS: LLMPluginSettings = {
 
 export default class LLMPlugin extends Plugin {
     settings: LLMPluginSettings;
-    private view: LLMView;
+    protected md: MarkdownIt;
 
     async onload() {
         await this.loadSettings();
+        this.md = new MarkdownIt();
 
         this.addSettingTab(new LLMSettingTab(this.app, this));
 
@@ -92,10 +94,15 @@ export default class LLMPlugin extends Plugin {
             );
         }
     }
+
+    // Add this new public method
+    public renderMarkdown(content: string): string {
+        return this.md.render(content);
+    }
 }
 
 class LLMView extends ItemView {
-    plugin: LLMPlugin;
+    private plugin: LLMPlugin;
     private chatHistory: HTMLElement;
     private conversationIdInput: HTMLInputElement;
     private promptInput: HTMLTextAreaElement;
@@ -129,7 +136,17 @@ class LLMView extends ItemView {
     private createChatInterface(container: HTMLElement) {
         const chatContainer = container.createDiv({ cls: 'llm-chat-container' });
 
-        this.conversationIdInput = chatContainer.createEl('input', {
+        const cidContainer = chatContainer.createDiv({ cls: 'llm-cid-container' });
+        
+        // Create the CID button first
+        const getCidButton = cidContainer.createEl('button', {
+            cls: 'llm-get-cid-button'
+        });
+        getCidButton.innerHTML = GetCidIcon;
+        getCidButton.addEventListener('click', () => this.getConversationIdFromCurrentNote());
+
+        // Then create the input box
+        this.conversationIdInput = cidContainer.createEl('input', {
             type: 'text',
             placeholder: 'Conversation ID (optional)',
             cls: 'llm-conversation-id-input'
@@ -265,7 +282,7 @@ class LLMView extends ItemView {
         responseEl.innerHTML = `
             <div class="llm-chat-content">
                 <div class="llm-chat-icon">${ChatbotIcon}</div>
-                <div class="llm-chat-text">${response}</div>
+                <div class="llm-chat-text">${this.plugin.renderMarkdown(response)}</div>
             </div>
         `;
         
@@ -292,6 +309,19 @@ class LLMView extends ItemView {
             new Notice('Appended to current note');
         } else {
             new Notice('No active note to append to');
+        }
+    }
+
+    private async getConversationIdFromCurrentNote() {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+            const content = await this.app.vault.read(activeFile);
+            const match = content.match(/Conversation ID:\s*(\S+)/);
+            if (match && match[1]) {
+                this.conversationIdInput.value = match[1];
+            } else {
+                this.conversationIdInput.value = '';
+            }
         }
     }
 }
