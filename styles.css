@@ -213,7 +213,8 @@
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
-  align-items: center; /* This ensures vertical alignment */
+  align-items: center;
+  justify-content: space-between; /* This will space out the elements evenly */
 }
 
 .llm-get-cid-button {
@@ -230,5 +231,22 @@
 }
 
 .llm-get-cid-button:hover {
+  background-color: var(--interactive-accent-hover);
+}
+
+.llm-clear-cid-button {
+  padding: 0.5rem;
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.llm-clear-cid-button:hover {
   background-color: var(--interactive-accent-hover);
 }

@@ -138,19 +138,26 @@ class LLMView extends ItemView {
 
         const cidContainer = chatContainer.createDiv({ cls: 'llm-cid-container' });
         
-        // Create the CID button first
+        // Create the CID button
         const getCidButton = cidContainer.createEl('button', {
             cls: 'llm-get-cid-button'
         });
         getCidButton.innerHTML = GetCidIcon;
         getCidButton.addEventListener('click', () => this.getConversationIdFromCurrentNote());
 
-        // Then create the input box
+        // Create the input box
         this.conversationIdInput = cidContainer.createEl('input', {
             type: 'text',
             placeholder: 'Conversation ID (optional)',
             cls: 'llm-conversation-id-input'
         });
+
+        // Add a clear button
+        const clearCidButton = cidContainer.createEl('button', {
+            cls: 'llm-clear-cid-button'
+        });
+        clearCidButton.innerHTML = 'Clear'; // You might want to use an icon here instead
+        clearCidButton.addEventListener('click', () => this.clearConversationId());
 
         const modelTemplateContainer = chatContainer.createDiv({ cls: 'llm-model-template-container' });
         this.modelInput = modelTemplateContainer.createEl('input', {
@@ -322,6 +329,12 @@ class LLMView extends ItemView {
             } else {
                 this.conversationIdInput.value = '';
             }
+        }
+    }
+
+    private clearConversationId() {
+        if (this.conversationIdInput) {
+            this.conversationIdInput.value = '';
         }
     }
 }
