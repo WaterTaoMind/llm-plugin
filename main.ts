@@ -221,10 +221,19 @@ class LLMView extends ItemView {
     }
 
     private async sendMessage() {
+        const prompt = this.promptInput.value;
+        
+        // Check for Tavily search command
+        const tavilyMatch = prompt.match(/^@tavily\s+(.+)$/);
+        if (tavilyMatch) {
+            await this.performTavilySearch(tavilyMatch[1]);
+            return;
+        }
+
+        // Existing LLM logic
         const conversationId = this.conversationIdInput.value;
         const model = this.modelInput.value;
         const template = this.patternInput.value;
-        const prompt = this.promptInput.value;
         const images = Array.from(this.imageInput?.parentNode?.children || [])
             .map(input => (input as HTMLInputElement).value)
             .filter(path => path.trim() !== '');
@@ -246,6 +255,39 @@ class LLMView extends ItemView {
         } catch (error) {
             console.error('Failed to get LLM response:', error);
             new Notice('Failed to get LLM response. Please try again.');
+        }
+    }
+
+    private async performTavilySearch(query: string) {
+        try {
+            const response = await fetch('https://api.tavily.com/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: query,
+                    include_answer: true,
+                    max_results: 5,
+                    include_images: true,
+                    search_depth: "basic",
+                    api_key: this.plugin.settings.tavilyApiKey
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const searchResult = JSON.stringify(data, null, 2);
+            
+            // Display search query and results in chat
+            this.appendToChatHistory(`@tavily ${query}`, searchResult);
+            this.promptInput.value = '';
+        } catch (error) {
+            console.error('Failed to perform Tavily search:', error);
+            new Notice('Failed to perform Tavily search. Please check your API key and try again.');
         }
     }
 
