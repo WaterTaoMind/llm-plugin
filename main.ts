@@ -230,6 +230,13 @@ class LLMView extends ItemView {
             return;
         }
 
+        // Check for Web scraping command
+        const webMatch = prompt.match(/^@web\s+(.+)$/);
+        if (webMatch) {
+            await this.performWebScrape(webMatch[1]);
+            return;
+        }
+
         // Existing LLM logic
         const conversationId = this.conversationIdInput.value;
         const model = this.modelInput.value;
@@ -288,6 +295,31 @@ class LLMView extends ItemView {
         } catch (error) {
             console.error('Failed to perform Tavily search:', error);
             new Notice('Failed to perform Tavily search. Please check your API key and try again.');
+        }
+    }
+
+    private async performWebScrape(url: string) {
+        try {
+            // Ensure URL starts with http:// or https://
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+            }
+
+            const jinaUrl = `https://r.jina.ai/${url}`;
+            const response = await fetch(jinaUrl);
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const content = await response.text();
+            
+            // Display URL and scraped content in chat
+            this.appendToChatHistory(`@web ${url}`, content);
+            this.promptInput.value = '';
+        } catch (error) {
+            console.error('Failed to scrape web content:', error);
+            new Notice('Failed to scrape web content. Please check the URL and try again.');
         }
     }
 
