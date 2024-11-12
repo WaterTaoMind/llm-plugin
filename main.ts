@@ -255,6 +255,7 @@ class LLMView extends ItemView {
             const response = await this.runLLM(prompt, template, model, options, images);
             this.appendToChatHistory(prompt, response);
             this.promptInput.value = '';
+            this.patternInput.value = '';
             if (this.imageInput && this.imageInput.parentNode) {
                 Array.from(this.imageInput.parentNode.children).forEach(input => (input as HTMLInputElement).value = '');
             }
