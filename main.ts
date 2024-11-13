@@ -237,33 +237,25 @@ class LLMView extends ItemView {
             return;
         }
 
-        // Existing LLM logic
-        const conversationId = this.conversationIdInput.value;
-        const model = this.modelInput.value;
-        const template = this.patternInput.value;
-        const images = Array.from(this.imageInput?.parentNode?.children || [])
-            .map(input => (input as HTMLInputElement).value)
-            .filter(path => path.trim() !== '');
-
-        if (!model) {
-            new Notice('Please enter a model ID before sending.');
+        // Check for Note reading command
+        const noteMatch = prompt.match(/^@note(?:\s+(.+))?$/);
+        if (noteMatch) {
+            const noteContent = await this.readCurrentNote();
+            if (noteContent) {
+                // If there's additional prompt text, combine it
+                const userPrompt = noteMatch[1];
+                const combinedPrompt = userPrompt 
+                    ? `${noteContent}\n\n${userPrompt}`
+                    : noteContent;
+                
+                // Process the combined prompt
+                await this.processLLMRequest(combinedPrompt);
+            }
             return;
         }
 
-        try {
-            const options = conversationId ? ["-c", "--cid", conversationId] : [];
-            const response = await this.runLLM(prompt, template, model, options, images);
-            this.appendToChatHistory(prompt, response);
-            this.promptInput.value = '';
-            this.patternInput.value = '';
-            if (this.imageInput && this.imageInput.parentNode) {
-                Array.from(this.imageInput.parentNode.children).forEach(input => (input as HTMLInputElement).value = '');
-            }
-            this.updateAddImageButtonVisibility();
-        } catch (error) {
-            console.error('Failed to get LLM response:', error);
-            new Notice('Failed to get LLM response. Please try again.');
-        }
+        // Regular LLM processing
+        await this.processLLMRequest(prompt);
     }
 
     private async performTavilySearch(query: string) {
@@ -410,6 +402,49 @@ class LLMView extends ItemView {
     private clearConversationId() {
         if (this.conversationIdInput) {
             this.conversationIdInput.value = '';
+        }
+    }
+
+    private async readCurrentNote(): Promise<string | null> {
+        try {
+            const activeFile = this.app.workspace.getActiveFile();
+            if (!activeFile) {
+                throw new Error('No active note found');
+            }
+            return await this.app.vault.read(activeFile);
+        } catch (error) {
+            console.error('Failed to read current note:', error);
+            new Notice('Failed to read current note. Please make sure a note is open.');
+            return null;
+        }
+    }
+
+    private async processLLMRequest(prompt: string) {
+        const conversationId = this.conversationIdInput.value;
+        const model = this.modelInput.value;
+        const template = this.patternInput.value;
+        const images = Array.from(this.imageInput?.parentNode?.children || [])
+            .map(input => (input as HTMLInputElement).value)
+            .filter(path => path.trim() !== '');
+
+        if (!model) {
+            new Notice('Please enter a model ID before sending.');
+            return;
+        }
+
+        try {
+            const options = conversationId ? ["-c", "--cid", conversationId] : [];
+            const response = await this.runLLM(prompt, template, model, options, images);
+            this.appendToChatHistory(prompt, response);
+            this.promptInput.value = '';
+            this.patternInput.value = '';
+            if (this.imageInput && this.imageInput.parentNode) {
+                Array.from(this.imageInput.parentNode.children).forEach(input => (input as HTMLInputElement).value = '');
+            }
+            this.updateAddImageButtonVisibility();
+        } catch (error) {
+            console.error('Failed to get LLM response:', error);
+            new Notice('Failed to get LLM response. Please try again.');
         }
     }
 }
