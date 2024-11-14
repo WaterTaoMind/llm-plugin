@@ -242,13 +242,24 @@ class LLMView extends ItemView {
         if (noteMatch) {
             const noteContent = await this.readCurrentNote();
             if (noteContent) {
-                // If there's additional prompt text, combine it
                 const userPrompt = noteMatch[1];
                 const combinedPrompt = userPrompt 
                     ? `${noteContent}\n\n${userPrompt}`
                     : noteContent;
-                
-                // Process the combined prompt
+                await this.processLLMRequest(combinedPrompt);
+            }
+            return;
+        }
+
+        // Check for Clipboard reading command
+        const clipboardMatch = prompt.match(/^@clipboard(?:\s+(.+))?$/);
+        if (clipboardMatch) {
+            const clipboardContent = await this.readClipboard();
+            if (clipboardContent) {
+                const userPrompt = clipboardMatch[1];
+                const combinedPrompt = userPrompt 
+                    ? `${clipboardContent}\n\n${userPrompt}`
+                    : clipboardContent;
                 await this.processLLMRequest(combinedPrompt);
             }
             return;
@@ -445,6 +456,20 @@ class LLMView extends ItemView {
         } catch (error) {
             console.error('Failed to get LLM response:', error);
             new Notice('Failed to get LLM response. Please try again.');
+        }
+    }
+
+    private async readClipboard(): Promise<string | null> {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text) {
+                throw new Error('Clipboard is empty');
+            }
+            return text;
+        } catch (error) {
+            console.error('Failed to read clipboard:', error);
+            new Notice('Failed to read clipboard. Please check clipboard permissions.');
+            return null;
         }
     }
 }
