@@ -405,8 +405,38 @@ class LLMView extends ItemView {
             if (match && match[1]) {
                 this.conversationIdInput.value = match[1];
             } else {
-                this.conversationIdInput.value = '';
+                // Try to get conversation ID from backend
+                try {
+                    const lastCid = await this.queryLastConversationId();
+                    this.conversationIdInput.value = lastCid || '';
+                } catch (error) {
+                    console.error('Failed to get conversation ID from backend:', error);
+                    this.conversationIdInput.value = '';
+                }
             }
+        }
+    }
+
+    private async queryLastConversationId(): Promise<string | null> {
+        try {
+            const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/latest_cid`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-API-Key': this.plugin.settings.llmConnectorApiKey
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.conversation_id || null;
+
+        } catch (error) {
+            console.error('Failed to query last conversation ID:', error);
+            return null;
         }
     }
 
