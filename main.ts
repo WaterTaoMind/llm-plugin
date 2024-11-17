@@ -1,7 +1,7 @@
 import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice, ItemView } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon, GetCidIcon } from './Icons';
+import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon, GetCidIcon, PrependNoteIcon } from './Icons';
 import MarkdownIt from 'markdown-it';
 
 const execAsync = promisify(exec);
@@ -418,6 +418,10 @@ class LLMView extends ItemView {
             new Notice('Copied to clipboard');
         };
 
+        const prependButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        prependButton.innerHTML = PrependNoteIcon;
+        prependButton.onclick = () => this.prependToCurrentNote(response);
+
         const appendButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
         appendButton.innerHTML = SaveAsNoteIcon;
         appendButton.onclick = () => this.appendToCurrentNote(response);
@@ -432,6 +436,17 @@ class LLMView extends ItemView {
             new Notice('Appended to current note');
         } else {
             new Notice('No active note to append to');
+        }
+    }
+
+    private async prependToCurrentNote(text: string) {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (activeFile) {
+            const currentContent = await this.app.vault.read(activeFile);
+            await this.app.vault.modify(activeFile, text + '\n\n' + currentContent);
+            new Notice('Prepended to current note');
+        } else {
+            new Notice('No active note to prepend to');
         }
     }
 
