@@ -223,6 +223,44 @@ class LLMView extends ItemView {
     private async sendMessage() {
         const prompt = this.promptInput.value;
         
+        // Add YouTube command handler
+        const youtubeMatch = prompt.match(/^@youtube\s+(.+?)(?:\s+(.+))?$/);
+        if (youtubeMatch) {
+            try {
+                const url = youtubeMatch[1];
+                const userPrompt = youtubeMatch[2];
+                const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/yt`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-API-Key': this.plugin.settings.llmConnectorApiKey
+                    },
+                    body: JSON.stringify({ 
+                        url: url,
+                        stream: false 
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.transcript) {
+                    const combinedPrompt = userPrompt 
+                        ? `${data.transcript}\n\n${userPrompt}`
+                        : data.transcript;
+                    await this.processLLMRequest(combinedPrompt);
+                }
+                return;
+            } catch (error) {
+                console.error('Failed to get YouTube transcript:', error);
+                new Notice('Failed to get YouTube transcript. Please check the URL and try again.');
+                return;
+            }
+        }
+
         // Check for Tavily search command
         const tavilyMatch = prompt.match(/^@tavily\s+(.+)$/);
         if (tavilyMatch) {
