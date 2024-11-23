@@ -241,7 +241,6 @@ class LLMView extends ItemView {
         if (youtubeMatch) {
             try {
                 const url = youtubeMatch[1].trim();
-                const userPrompt = youtubeMatch[2]?.trim();
                 const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/yt`, {
                     method: 'POST',
                     headers: {
@@ -261,10 +260,8 @@ class LLMView extends ItemView {
 
                 const data = await response.json();
                 if (data.transcript) {
-                    const combinedPrompt = userPrompt 
-                        ? `${data.transcript}\n\n${userPrompt}`
-                        : data.transcript;
-                    await this.processLLMRequest(combinedPrompt);
+                    await this.processLLMRequest(data.transcript);
+                    this.promptInput.value = '';
                 }
                 return;
             } catch (error) {
@@ -378,8 +375,8 @@ class LLMView extends ItemView {
 
             const content = await response.text();
             
-            // Display URL and scraped content in chat
-            this.appendToChatHistory(`@web ${url}`, content);
+            // Instead of just displaying content, send it to LLM
+            await this.processLLMRequest(content);
             this.promptInput.value = '';
         } catch (error) {
             console.error('Failed to scrape web content:', error);
