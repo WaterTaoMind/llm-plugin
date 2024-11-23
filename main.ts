@@ -111,6 +111,14 @@ class LLMView extends ItemView {
     private modelInput: HTMLInputElement;
     private imageInput: HTMLInputElement;
     private addImageButton: HTMLButtonElement;
+    private commands = [
+        { name: '@web', description: 'Scrape content from a URL' },
+        { name: '@tavily', description: 'Search using Tavily API' },
+        { name: '@youtube', description: 'Get YouTube video transcript' },
+        { name: '@note', description: 'Read current note content' },
+        { name: '@clipboard', description: 'Read from clipboard' }
+    ];
+    private dropdown: HTMLElement | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -189,6 +197,11 @@ class LLMView extends ItemView {
             cls: 'llm-prompt-input'
         });
 
+        this.promptInput.addEventListener('input', ((e: Event) => {
+            this.handlePromptInput(e as InputEvent);
+        }) as EventListener);
+        this.promptInput.addEventListener('keydown', (e) => this.handlePromptKeydown(e));
+
         this.sendButton = promptInputContainer.createEl('button', {
             cls: 'llm-send-button'
         });
@@ -221,14 +234,14 @@ class LLMView extends ItemView {
     }
 
     private async sendMessage() {
-        const prompt = this.promptInput.value;
+        const prompt = this.promptInput.value.trim();
         
-        // Add YouTube command handler
-        const youtubeMatch = prompt.match(/^@youtube\s+(.+?)(?:\s+(.+))?$/);
+        // YouTube command with optional user prompt
+        const youtubeMatch = prompt.match(/^@youtube\s+(.+?)(?:\s+(.+))?$/i);
         if (youtubeMatch) {
             try {
-                const url = youtubeMatch[1];
-                const userPrompt = youtubeMatch[2];
+                const url = youtubeMatch[1].trim();
+                const userPrompt = youtubeMatch[2]?.trim();
                 const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/yt`, {
                     method: 'POST',
                     headers: {
@@ -261,49 +274,58 @@ class LLMView extends ItemView {
             }
         }
 
-        // Check for Tavily search command
-        const tavilyMatch = prompt.match(/^@tavily\s+(.+)$/);
+        // Tavily search command
+        const tavilyMatch = prompt.match(/^@tavily\s+(.+)$/i);
         if (tavilyMatch) {
-            await this.performTavilySearch(tavilyMatch[1]);
+            await this.performTavilySearch(tavilyMatch[1].trim());
             return;
         }
 
-        // Check for Web scraping command
-        const webMatch = prompt.match(/^@web\s+(.+)$/);
+        // Web scraping command
+        const webMatch = prompt.match(/^@web\s+(.+)$/i);
         if (webMatch) {
-            await this.performWebScrape(webMatch[1]);
+            await this.performWebScrape(webMatch[1].trim());
             return;
         }
 
-        // Check for Note reading command
-        const noteMatch = prompt.match(/^@note(?:\s+(.+))?$/);
+        // Note reading command
+        const noteMatch = prompt.match(/^@note\s*(.*?)$/i);
         if (noteMatch) {
-            const noteContent = await this.readCurrentNote();
-            if (noteContent) {
-                const userPrompt = noteMatch[1];
-                const combinedPrompt = userPrompt 
-                    ? `${noteContent}\n\n${userPrompt}`
-                    : noteContent;
-                await this.processLLMRequest(combinedPrompt);
+            try {
+                const activeFile = this.app.workspace.getActiveFile();
+                if (activeFile) {
+                    const content = await this.app.vault.read(activeFile);
+                    await this.processLLMRequest(content);
+                } else {
+                    new Notice('No active note found');
+                }
+                return;
+            } catch (error) {
+                console.error('Failed to read note:', error);
+                new Notice('Failed to read note content');
+                return;
             }
-            return;
         }
 
-        // Check for Clipboard reading command
-        const clipboardMatch = prompt.match(/^@clipboard(?:\s+(.+))?$/);
+        // Clipboard command
+        const clipboardMatch = prompt.match(/^@clipboard\s*(.*?)$/i);
         if (clipboardMatch) {
-            const clipboardContent = await this.readClipboard();
-            if (clipboardContent) {
-                const userPrompt = clipboardMatch[1];
-                const combinedPrompt = userPrompt 
-                    ? `${clipboardContent}\n\n${userPrompt}`
-                    : clipboardContent;
-                await this.processLLMRequest(combinedPrompt);
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    await this.processLLMRequest(text);
+                } else {
+                    new Notice('No text found in clipboard');
+                }
+                return;
+            } catch (error) {
+                console.error('Failed to read clipboard:', error);
+                new Notice('Failed to read clipboard. Please check clipboard permissions.');
+                return;
             }
-            return;
         }
 
-        // Regular LLM processing
+        // If no command matches, process as regular prompt
         await this.processLLMRequest(prompt);
     }
 
@@ -554,6 +576,75 @@ class LLMView extends ItemView {
             new Notice('Failed to read clipboard. Please check clipboard permissions.');
             return null;
         }
+    }
+
+    private handlePromptInput(e: InputEvent) {
+        const target = e.target as HTMLTextAreaElement;
+        const cursorPosition = target.selectionStart;
+        const textBeforeCursor = target.value.substring(0, cursorPosition);
+        
+        if (textBeforeCursor.endsWith('@')) {
+            this.showCommandDropdown();
+        } else {
+            this.hideCommandDropdown();
+        }
+    }
+
+    private handlePromptKeydown(e: KeyboardEvent) {
+        if (!this.dropdown) return;
+
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            // Handle selection
+        } else if (e.key === 'Enter' && this.dropdown.style.display !== 'none') {
+            e.preventDefault();
+            const selected = this.dropdown.querySelector('.selected');
+            if (selected) {
+                this.insertCommand(selected.textContent || '');
+            }
+        } else if (e.key === 'Escape') {
+            this.hideCommandDropdown();
+        }
+    }
+
+    private showCommandDropdown() {
+        if (!this.dropdown) {
+            this.dropdown = document.createElement('div');
+            this.dropdown.className = 'llm-command-dropdown';
+            this.promptInput.parentElement?.appendChild(this.dropdown);
+        }
+
+        const dropdown = this.dropdown;
+        if (dropdown) {
+            dropdown.style.display = 'block';
+            dropdown.style.top = `${this.promptInput.offsetTop - dropdown.offsetHeight}px`;
+            dropdown.style.left = `${this.promptInput.offsetLeft}px`;
+            
+            dropdown.innerHTML = '';
+            this.commands.forEach(cmd => {
+                const option = document.createElement('div');
+                option.className = 'llm-command-option';
+                option.textContent = `${cmd.name} - ${cmd.description}`;
+                option.onclick = () => this.insertCommand(cmd.name);
+                dropdown.appendChild(option);
+            });
+        }
+    }
+
+    private hideCommandDropdown() {
+        if (this.dropdown) {
+            this.dropdown.style.display = 'none';
+        }
+    }
+
+    private insertCommand(command: string) {
+        const cursorPosition = this.promptInput.selectionStart;
+        const textBeforeCursor = this.promptInput.value.substring(0, cursorPosition - 1); // Remove @
+        const textAfterCursor = this.promptInput.value.substring(cursorPosition);
+        
+        this.promptInput.value = textBeforeCursor + command + ' ' + textAfterCursor;
+        this.hideCommandDropdown();
+        this.promptInput.focus();
     }
 }
 
