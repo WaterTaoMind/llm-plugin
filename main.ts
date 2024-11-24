@@ -1,7 +1,7 @@
-import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice, ItemView } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf, TFile, Notice, ItemView, MarkdownView } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon, GetCidIcon, PrependNoteIcon } from './Icons';
+import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, PlusIcon, GetCidIcon, PrependNoteIcon, InsertNoteIcon } from './Icons';
 import MarkdownIt from 'markdown-it';
 
 const execAsync = promisify(exec);
@@ -437,6 +437,10 @@ class LLMView extends ItemView {
             new Notice('Copied to clipboard');
         };
 
+        const insertButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        insertButton.innerHTML = InsertNoteIcon;
+        insertButton.onclick = () => this.insertAtCursor(response);
+
         const prependButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
         prependButton.innerHTML = PrependNoteIcon;
         prependButton.onclick = () => this.prependToCurrentNote(response);
@@ -642,6 +646,36 @@ class LLMView extends ItemView {
         this.promptInput.value = textBeforeCursor + command + ' ' + textAfterCursor;
         this.hideCommandDropdown();
         this.promptInput.focus();
+    }
+
+    private async insertAtCursor(text: string) {
+        // Get the most recent leaf
+        let leaf = this.app.workspace.getMostRecentLeaf();
+        if (!leaf) {
+            new Notice("No active note found.");
+            return;
+        }
+
+        // Ensure we're working with a markdown view
+        if (!(leaf.view instanceof MarkdownView)) {
+            leaf = this.app.workspace.getLeaf(false);
+            await leaf.setViewState({ 
+                type: "markdown", 
+                state: leaf.view.getState() 
+            });
+        }
+
+        // Double check we have a markdown view
+        if (!(leaf.view instanceof MarkdownView)) {
+            new Notice("Failed to open a markdown view.");
+            return;
+        }
+
+        // Insert the text at cursor position
+        const editor = leaf.view.editor;
+        const cursor = editor.getCursor();
+        editor.replaceRange(text, cursor);
+        new Notice('Inserted at cursor position');
     }
 }
 
