@@ -35,4 +35,9 @@ export const PrependNoteIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="2
   <polyline points="8 8 12 4 16 8"></polyline>
 </svg>`;
 
+export const InsertNoteIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+  <polyline points="8 12 12 12 16 12"></polyline>
+</svg>`;
+
 // Remove the group export at the end
