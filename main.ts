@@ -39,6 +39,9 @@ export default class LLMPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         this.md = new MarkdownIt();
+        
+        // Configure MarkdownIt to add copy buttons to code blocks, diagrams, and SVG content
+        this.configureCopyableBlocks();
 
         this.addSettingTab(new LLMSettingTab(this.app, this));
 
@@ -56,6 +59,12 @@ export default class LLMPlugin extends Plugin {
         } else {
             this.app.workspace.onLayoutReady(this.initLeaf.bind(this));
         }
+        
+        // Add CSS for copyable blocks
+        this.addCopyableBlocksStyles();
+        
+        // Add global event listener for copy buttons
+        document.addEventListener('click', this.handleCopyButtonClick.bind(this));
     }
 
     async loadSettings() {
@@ -98,6 +107,319 @@ export default class LLMPlugin extends Plugin {
     // Add this new public method
     public renderMarkdown(content: string): string {
         return this.md.render(content);
+    }
+
+    private configureCopyableBlocks() {
+        // Store the original fence renderer
+        const originalFenceRenderer = this.md.renderer.rules.fence;
+        
+        // Replace the fence renderer with our custom one
+        this.md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+            const token = tokens[idx];
+            const content = token.content;
+            const langName = token.info.trim() || '';
+            
+            // Generate the original HTML for the code block
+            let originalHtml = '';
+            if (originalFenceRenderer) {
+                originalHtml = originalFenceRenderer(tokens, idx, options, env, self);
+            } else {
+                originalHtml = self.renderToken(tokens, idx, options);
+            }
+            
+            // Determine the block type based on the language
+            let blockType = 'code';
+            if (langName.match(/^(plantuml|mermaid|graph)$/i)) {
+                blockType = 'diagram';
+            } else if (langName.match(/^svg$/i) || content.trim().startsWith('<svg')) {
+                blockType = 'svg';
+            }
+            
+            // Create a wrapper with the copy button
+            return `
+                <div class="llm-copyable-block llm-${blockType}-block">
+                    ${originalHtml}
+                    <button class="llm-copy-block-button" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    </button>
+                </div>
+            `;
+        };
+        
+        // Store the original html_block renderer
+        const originalHtmlBlockRenderer = this.md.renderer.rules.html_block;
+        
+        // Replace the html_block renderer with our custom one
+        this.md.renderer.rules.html_block = (tokens, idx, options, env, self) => {
+            const token = tokens[idx];
+            const content = token.content;
+            
+            // Generate the original HTML 
+            let originalHtml = '';
+            if (originalHtmlBlockRenderer) {
+                originalHtml = originalHtmlBlockRenderer(tokens, idx, options, env, self);
+            } else {
+                originalHtml = content;
+            }
+            
+            // Check if this looks like SVG content
+            let blockType = 'html';
+            if (content.trim().match(/<svg\s/i)) {
+                blockType = 'svg';
+            } else if (content.trim().match(/<(div|span)\s+class="[^"]*mermaid[^"]*"/i)) {
+                blockType = 'diagram';
+            }
+            
+            // Only add copy button for specific HTML block types
+            if (blockType === 'svg' || blockType === 'diagram') {
+                return `
+                    <div class="llm-copyable-block llm-${blockType}-block">
+                        ${originalHtml}
+                        <button class="llm-copy-block-button" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        </button>
+                    </div>
+                `;
+            }
+            
+            // Return the original HTML for other HTML blocks
+            return originalHtml;
+        };
+        
+        // Add support for tables
+        const originalTableRenderer = this.md.renderer.rules.table_open;
+        
+        this.md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
+            // Find the table_close token
+            let closeIdx = idx;
+            while (closeIdx < tokens.length && (tokens[closeIdx].type !== 'table_close')) {
+                closeIdx++;
+            }
+            
+            // Extract all tokens between table_open and table_close
+            const tableTokens = tokens.slice(idx, closeIdx + 1);
+            
+            // Generate the original HTML for the table
+            let tableHtml = '';
+            for (let i = 0; i < tableTokens.length; i++) {
+                if (originalTableRenderer && i === 0) {
+                    tableHtml += originalTableRenderer(tokens, idx + i, options, env, self);
+                } else {
+                    tableHtml += self.renderToken(tableTokens, i, options);
+                }
+            }
+            
+            // Generate plaintext version of the table for copying
+            let tableText = '';
+            let rowContent = [];
+            let inRow = false;
+            
+            for (let i = 0; i < tableTokens.length; i++) {
+                const token = tableTokens[i];
+                
+                if (token.type === 'tr_open') {
+                    inRow = true;
+                    rowContent = [];
+                } else if (token.type === 'tr_close') {
+                    inRow = false;
+                    tableText += rowContent.join('\t') + '\n';
+                } else if ((token.type === 'th_open' || token.type === 'td_open') && i + 1 < tableTokens.length) {
+                    const contentToken = tableTokens[i + 1];
+                    if (contentToken.type === 'inline' && contentToken.content) {
+                        rowContent.push(contentToken.content);
+                    }
+                }
+            }
+            
+            // Skip the rendering of the table tokens as we've already done it
+            tokens.splice(idx + 1, closeIdx - idx);
+            
+            // Return the table with a copy button
+            return `
+                <div class="llm-copyable-block llm-table-block">
+                    ${tableHtml}
+                    <button class="llm-copy-block-button" data-content="${this.escapeHtml(tableText)}" title="Copy table data">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    </button>
+                </div>
+            `;
+        };
+    }
+    
+    private handleCopyButtonClick(event: MouseEvent) {
+        const target = event.target as HTMLElement;
+        const copyButton = target.closest('.llm-copy-block-button');
+        
+        if (copyButton) {
+            const content = (copyButton as HTMLElement).getAttribute('data-content');
+            if (content) {
+                // Decode the HTML entities
+                const decodedContent = this.decodeHtml(content);
+                
+                navigator.clipboard.writeText(decodedContent).then(() => {
+                    new Notice('Copied to clipboard');
+                    
+                    // Add visual feedback
+                    copyButton.classList.add('copied');
+                    setTimeout(() => copyButton.classList.remove('copied'), 1000);
+                }).catch(err => {
+                    console.error('Failed to copy content: ', err);
+                    new Notice('Failed to copy to clipboard');
+                });
+            }
+        }
+    }
+    
+    private addCopyableBlocksStyles() {
+        const styleEl = document.createElement('style');
+        styleEl.id = 'llm-copyable-blocks-styles';
+        styleEl.textContent = `
+            .llm-copyable-block {
+                position: relative;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                margin: 0.75em 0;
+                overflow: hidden;
+                padding: 0.25em 0;
+                transition: box-shadow 0.2s ease-in-out;
+            }
+            
+            .llm-copyable-block:hover {
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+            }
+            
+            .llm-copyable-block pre {
+                margin: 0;
+                padding-right: 30px; /* Space for the copy button */
+            }
+            
+            .llm-copy-block-button {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                background: var(--background-primary-alt);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 4px;
+                padding: 4px;
+                cursor: pointer;
+                opacity: 0.6;
+                transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
+                z-index: 10;
+            }
+            
+            .llm-copyable-block:hover .llm-copy-block-button {
+                opacity: 0.8;
+            }
+            
+            .llm-copy-block-button:hover {
+                opacity: 1 !important;
+                background-color: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+            
+            .llm-copy-block-button.copied {
+                background-color: var(--interactive-success);
+                color: var(--text-on-accent);
+                opacity: 1;
+            }
+            
+            .llm-copy-block-button svg {
+                display: block;
+                width: 16px;
+                height: 16px;
+            }
+            
+            .llm-code-block {
+                background: var(--code-background);
+                padding: 0;
+            }
+            
+            .llm-code-block code {
+                white-space: pre;
+            }
+            
+            .llm-diagram-block {
+                background: var(--background-primary-alt);
+                padding: 8px;
+            }
+            
+            .llm-svg-block {
+                background: white;
+                padding: 8px;
+                display: flex;
+                justify-content: center;
+            }
+            
+            /* Table styling */
+            .llm-table-block {
+                background: var(--background-primary);
+                padding: 0;
+            }
+            
+            .llm-table-block table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 0;
+            }
+            
+            .llm-table-block th {
+                background-color: var(--background-secondary);
+                padding: 6px 10px;
+                text-align: left;
+                font-weight: bold;
+            }
+            
+            .llm-table-block td {
+                padding: 6px 10px;
+                border-top: 1px solid var(--background-modifier-border);
+            }
+            
+            .llm-table-block tr:nth-child(2n) {
+                background-color: var(--background-secondary-alt);
+            }
+            
+            /* Ensure proper display of Mermaid diagrams */
+            .llm-diagram-block .mermaid {
+                display: flex;
+                justify-content: center;
+                padding: 8px 0;
+            }
+            
+            /* Fix for Firefox to ensure buttons are visible */
+            @-moz-document url-prefix() {
+                .llm-copy-block-button {
+                    position: absolute;
+                    top: 6px;
+                    right: 6px;
+                }
+            }
+            
+            /* Fix for Safari */
+            @media not all and (min-resolution:.001dpcm) {
+                @supports (-webkit-appearance:none) {
+                    .llm-copy-block-button {
+                        position: fixed;
+                        position: absolute;
+                    }
+                }
+            }
+        `;
+        document.head.appendChild(styleEl);
+    }
+    
+    private escapeHtml(str: string): string {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+    
+    private decodeHtml(html: string): string {
+        const txt = document.createElement('textarea');
+        txt.innerHTML = html;
+        return txt.value;
     }
 }
 
