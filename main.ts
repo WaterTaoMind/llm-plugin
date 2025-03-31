@@ -63,8 +63,118 @@ export default class LLMPlugin extends Plugin {
         // Add CSS for copyable blocks
         this.addCopyableBlocksStyles();
         
-        // Add global event listener for copy buttons
-        document.addEventListener('click', this.handleCopyButtonClick.bind(this));
+        // Set up the click event handler for the action buttons
+        this.registerDomEvent(document, 'click', this.handleBlockButtonClick.bind(this));
+    }
+
+    private handleBlockButtonClick(event: MouseEvent) {
+        // Use event delegation to handle clicks
+        const target = event.target as HTMLElement;
+        const button = target.closest('.llm-block-action') as HTMLElement;
+        
+        if (!button) return;
+        
+        // Prevent the event from bubbling to avoid multiple triggers
+        event.stopPropagation();
+        event.preventDefault();
+        
+        // Check if this button is currently being processed
+        if (button.hasAttribute('data-processing')) return;
+        
+        // Mark button as processing
+        button.setAttribute('data-processing', 'true');
+        
+        // Get the action and content
+        const action = button.getAttribute('data-action');
+        const content = button.getAttribute('data-content');
+        
+        if (!action || !content) {
+            button.removeAttribute('data-processing');
+            return;
+        }
+        
+        // Add visual feedback
+        button.classList.add('copied');
+        
+        // Get the plugin view
+        const activeLeaves = this.app.workspace.getLeavesOfType('llm-view');
+        const view = activeLeaves.length > 0 ? activeLeaves[0].view as LLMView : null;
+        
+        // Execute the appropriate action
+        const cleanup = () => {
+            setTimeout(() => {
+                button.classList.remove('copied');
+                button.removeAttribute('data-processing');
+            }, 1000);
+        };
+        
+        try {
+            switch (action) {
+                case 'copy':
+                    navigator.clipboard.writeText(content)
+                        .then(() => {
+                            new Notice('Copied to clipboard');
+                            cleanup();
+                        })
+                        .catch(err => {
+                            console.error('Failed to copy:', err);
+                            new Notice('Failed to copy to clipboard');
+                            cleanup();
+                        });
+                    break;
+                    
+                case 'insert':
+                    if (view) {
+                        view.insertAtCursor(content)
+                            .then(() => cleanup())
+                            .catch(() => {
+                                new Notice('Failed to insert at cursor');
+                                cleanup();
+                            });
+                    } else {
+                        new Notice('LLM view not found');
+                        cleanup();
+                    }
+                    break;
+                    
+                case 'prepend':
+                    if (view) {
+                        view.prependToCurrentNote(content)
+                            .then(() => cleanup())
+                            .catch(() => {
+                                new Notice('Failed to prepend to note');
+                                cleanup();
+                            });
+                    } else {
+                        new Notice('LLM view not found');
+                        cleanup();
+                    }
+                    break;
+                    
+                case 'append':
+                    if (view) {
+                        view.appendToCurrentNote(content)
+                            .then(() => cleanup())
+                            .catch(() => {
+                                new Notice('Failed to append to note');
+                                cleanup();
+                            });
+                    } else {
+                        new Notice('LLM view not found');
+                        cleanup();
+                    }
+                    break;
+                    
+                default:
+                    console.warn('Unknown action:', action);
+                    cleanup();
+                    break;
+            }
+        } catch (error) {
+            console.error('Error handling button click:', error);
+            new Notice('An error occurred');
+            cleanup();
+        }
     }
 
     async loadSettings() {
@@ -135,13 +245,24 @@ export default class LLMPlugin extends Plugin {
                 blockType = 'svg';
             }
             
-            // Create a wrapper with the copy button
+            // Create a wrapper with buttons that use data attributes instead of onclick
             return `
                 <div class="llm-copyable-block llm-${blockType}-block">
                     ${originalHtml}
-                    <button class="llm-copy-block-button" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                    </button>
+                    <div class="llm-block-toolbar">
+                        <button class="llm-block-action" data-action="copy" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        </button>
+                        <button class="llm-block-action" data-action="insert" data-content="${this.escapeHtml(content)}" title="Insert at cursor">
+                            ${InsertNoteIcon}
+                        </button>
+                        <button class="llm-block-action" data-action="prepend" data-content="${this.escapeHtml(content)}" title="Prepend to note">
+                            ${PrependNoteIcon}
+                        </button>
+                        <button class="llm-block-action" data-action="append" data-content="${this.escapeHtml(content)}" title="Append to note">
+                            ${SaveAsNoteIcon}
+                        </button>
+                    </div>
                 </div>
             `;
         };
@@ -170,14 +291,25 @@ export default class LLMPlugin extends Plugin {
                 blockType = 'diagram';
             }
             
-            // Only add copy button for specific HTML block types
+            // Only add toolbar for specific HTML block types
             if (blockType === 'svg' || blockType === 'diagram') {
                 return `
                     <div class="llm-copyable-block llm-${blockType}-block">
                         ${originalHtml}
-                        <button class="llm-copy-block-button" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                        </button>
+                        <div class="llm-block-toolbar">
+                            <button class="llm-block-action" data-action="copy" data-content="${this.escapeHtml(content)}" title="Copy to clipboard">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                            </button>
+                            <button class="llm-block-action" data-action="insert" data-content="${this.escapeHtml(content)}" title="Insert at cursor">
+                                ${InsertNoteIcon}
+                            </button>
+                            <button class="llm-block-action" data-action="prepend" data-content="${this.escapeHtml(content)}" title="Prepend to note">
+                                ${PrependNoteIcon}
+                            </button>
+                            <button class="llm-block-action" data-action="append" data-content="${this.escapeHtml(content)}" title="Append to note">
+                                ${SaveAsNoteIcon}
+                            </button>
+                        </div>
                     </div>
                 `;
             }
@@ -234,40 +366,27 @@ export default class LLMPlugin extends Plugin {
             // Skip the rendering of the table tokens as we've already done it
             tokens.splice(idx + 1, closeIdx - idx);
             
-            // Return the table with a copy button
+            // Return the table with the toolbar
             return `
                 <div class="llm-copyable-block llm-table-block">
                     ${tableHtml}
-                    <button class="llm-copy-block-button" data-content="${this.escapeHtml(tableText)}" title="Copy table data">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                    </button>
+                    <div class="llm-block-toolbar">
+                        <button class="llm-block-action" data-action="copy" data-content="${this.escapeHtml(tableText)}" title="Copy table data">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        </button>
+                        <button class="llm-block-action" data-action="insert" data-content="${this.escapeHtml(tableText)}" title="Insert at cursor">
+                            ${InsertNoteIcon}
+                        </button>
+                        <button class="llm-block-action" data-action="prepend" data-content="${this.escapeHtml(tableText)}" title="Prepend to note">
+                            ${PrependNoteIcon}
+                        </button>
+                        <button class="llm-block-action" data-action="append" data-content="${this.escapeHtml(tableText)}" title="Append to note">
+                            ${SaveAsNoteIcon}
+                        </button>
+                    </div>
                 </div>
             `;
         };
-    }
-    
-    private handleCopyButtonClick(event: MouseEvent) {
-        const target = event.target as HTMLElement;
-        const copyButton = target.closest('.llm-copy-block-button');
-        
-        if (copyButton) {
-            const content = (copyButton as HTMLElement).getAttribute('data-content');
-            if (content) {
-                // Decode the HTML entities
-                const decodedContent = this.decodeHtml(content);
-                
-                navigator.clipboard.writeText(decodedContent).then(() => {
-                    new Notice('Copied to clipboard');
-                    
-                    // Add visual feedback
-                    copyButton.classList.add('copied');
-                    setTimeout(() => copyButton.classList.remove('copied'), 1000);
-                }).catch(err => {
-                    console.error('Failed to copy content: ', err);
-                    new Notice('Failed to copy to clipboard');
-                });
-            }
-        }
     }
     
     private addCopyableBlocksStyles() {
@@ -290,43 +409,98 @@ export default class LLMPlugin extends Plugin {
             
             .llm-copyable-block pre {
                 margin: 0;
-                padding-right: 30px; /* Space for the copy button */
+                padding-right: 30px; /* Space for the toolbar */
             }
             
-            .llm-copy-block-button {
+            /* Toolbar styling */
+            .llm-block-toolbar {
                 position: absolute;
                 top: 6px;
                 right: 6px;
+                display: flex;
+                flex-direction: row;
+                gap: 4px;
                 background: var(--background-primary-alt);
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 4px;
-                padding: 4px;
-                cursor: pointer;
-                opacity: 0.6;
-                transition: opacity 0.2s ease-in-out, background-color 0.2s ease-in-out;
+                padding: 2px;
+                opacity: 0;
+                transform: translateX(10px);
+                transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
                 z-index: 10;
             }
             
-            .llm-copyable-block:hover .llm-copy-block-button {
-                opacity: 0.8;
+            .llm-copyable-block:hover .llm-block-toolbar {
+                opacity: 0.9;
+                transform: translateX(0);
             }
             
-            .llm-copy-block-button:hover {
-                opacity: 1 !important;
+            /* On touch devices, always show the toolbar (no hover) */
+            @media (hover: none) {
+                .llm-block-toolbar {
+                    opacity: 0.9;
+                    transform: translateX(0);
+                    background: var(--background-secondary);
+                }
+            }
+            
+            /* Individual action buttons */
+            .llm-block-action {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: transparent;
+                border: none;
+                border-radius: 3px;
+                padding: 4px;
+                cursor: pointer;
+                color: var(--text-normal);
+                transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+                position: relative;
+            }
+            
+            .llm-block-action:hover {
                 background-color: var(--interactive-accent);
                 color: var(--text-on-accent);
             }
             
-            .llm-copy-block-button.copied {
-                background-color: var(--interactive-success);
-                color: var(--text-on-accent);
-                opacity: 1;
+            /* Add a tooltip on hover */
+            .llm-block-action:hover::after {
+                content: attr(title);
+                position: absolute;
+                top: -25px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--background-modifier-border);
+                color: var(--text-normal);
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 12px;
+                white-space: nowrap;
+                z-index: 100;
             }
             
-            .llm-copy-block-button svg {
+            .llm-block-action.copied {
+                background-color: var(--interactive-success);
+                color: var(--text-on-accent);
+            }
+            
+            .llm-block-action svg {
                 display: block;
                 width: 16px;
                 height: 16px;
+            }
+            
+            /* Make buttons slightly larger on touch devices */
+            @media (hover: none) {
+                .llm-block-action {
+                    padding: 6px;
+                }
+                
+                .llm-block-action svg {
+                    width: 18px;
+                    height: 18px;
+                }
             }
             
             .llm-code-block {
@@ -387,7 +561,7 @@ export default class LLMPlugin extends Plugin {
             
             /* Fix for Firefox to ensure buttons are visible */
             @-moz-document url-prefix() {
-                .llm-copy-block-button {
+                .llm-block-toolbar {
                     position: absolute;
                     top: 6px;
                     right: 6px;
@@ -397,7 +571,7 @@ export default class LLMPlugin extends Plugin {
             /* Fix for Safari */
             @media not all and (min-resolution:.001dpcm) {
                 @supports (-webkit-appearance:none) {
-                    .llm-copy-block-button {
+                    .llm-block-toolbar {
                         position: fixed;
                         position: absolute;
                     }
@@ -420,6 +594,19 @@ export default class LLMPlugin extends Plugin {
         const txt = document.createElement('textarea');
         txt.innerHTML = html;
         return txt.value;
+    }
+
+    async onunload() {
+        console.log('Unloading LLM plugin');
+        
+        // We don't need to explicitly remove event listeners registered with registerDomEvent
+        // as they get cleaned up automatically when the plugin is unloaded
+        
+        // Remove any added styles
+        const styleEl = document.getElementById('llm-copyable-blocks-styles');
+        if (styleEl) {
+            styleEl.remove();
+        }
     }
 }
 
@@ -774,7 +961,7 @@ class LLMView extends ItemView {
         this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
     }
 
-    private async appendToCurrentNote(text: string) {
+    public async appendToCurrentNote(text: string) {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
             await this.app.vault.append(activeFile, '\n\n' + text);
@@ -784,7 +971,7 @@ class LLMView extends ItemView {
         }
     }
 
-    private async prependToCurrentNote(text: string) {
+    public async prependToCurrentNote(text: string) {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
             const currentContent = await this.app.vault.read(activeFile);
@@ -793,6 +980,37 @@ class LLMView extends ItemView {
         } else {
             new Notice('No active note to prepend to');
         }
+    }
+
+    public async insertAtCursor(text: string): Promise<boolean> {
+        // Get the most recent leaf
+        let leaf = this.app.workspace.getMostRecentLeaf();
+        if (!leaf) {
+            new Notice("No active note found.");
+            return Promise.resolve(false);
+        }
+
+        // Ensure we're working with a markdown view
+        if (!(leaf.view instanceof MarkdownView)) {
+            leaf = this.app.workspace.getLeaf(false);
+            await leaf.setViewState({ 
+                type: "markdown", 
+                state: leaf.view.getState() 
+            });
+        }
+
+        // Double check we have a markdown view
+        if (!(leaf.view instanceof MarkdownView)) {
+            new Notice("Failed to open a markdown view.");
+            return Promise.resolve(false);
+        }
+
+        // Insert the text at cursor position
+        const editor = leaf.view.editor;
+        const cursor = editor.getCursor();
+        editor.replaceRange(text, cursor);
+        new Notice('Inserted at cursor position');
+        return Promise.resolve(true);
     }
 
     private async getConversationIdFromCurrentNote() {
@@ -968,36 +1186,6 @@ class LLMView extends ItemView {
         this.promptInput.value = textBeforeCursor + command + ' ' + textAfterCursor;
         this.hideCommandDropdown();
         this.promptInput.focus();
-    }
-
-    private async insertAtCursor(text: string) {
-        // Get the most recent leaf
-        let leaf = this.app.workspace.getMostRecentLeaf();
-        if (!leaf) {
-            new Notice("No active note found.");
-            return;
-        }
-
-        // Ensure we're working with a markdown view
-        if (!(leaf.view instanceof MarkdownView)) {
-            leaf = this.app.workspace.getLeaf(false);
-            await leaf.setViewState({ 
-                type: "markdown", 
-                state: leaf.view.getState() 
-            });
-        }
-
-        // Double check we have a markdown view
-        if (!(leaf.view instanceof MarkdownView)) {
-            new Notice("Failed to open a markdown view.");
-            return;
-        }
-
-        // Insert the text at cursor position
-        const editor = leaf.view.editor;
-        const cursor = editor.getCursor();
-        editor.replaceRange(text, cursor);
-        new Notice('Inserted at cursor position');
     }
 }
 
