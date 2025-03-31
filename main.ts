@@ -503,6 +503,37 @@ export default class LLMPlugin extends Plugin {
                 }
             }
             
+            /* Styling for the message action buttons */
+            .llm-message-actions {
+                display: flex;
+                flex-direction: row;
+                gap: 6px;
+                margin-top: 8px;
+                padding: 0 8px;
+            }
+            
+            .llm-message-actions .llm-block-action {
+                padding: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: var(--background-primary-alt);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 4px;
+                cursor: pointer;
+                transition: background-color 0.2s ease;
+            }
+            
+            .llm-message-actions .llm-block-action:hover {
+                background-color: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+            
+            .llm-message-actions .llm-block-action.copied {
+                background-color: var(--interactive-success);
+                color: var(--text-on-accent);
+            }
+            
             .llm-code-block {
                 background: var(--code-background);
                 padding: 0;
@@ -939,46 +970,75 @@ class LLMView extends ItemView {
         
         const actionContainer = responseEl.createDiv({ cls: 'llm-message-actions' });
         
-        const copyButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
-        copyButton.innerHTML = CopyClipboardIcon;
+        // Updated copy button to match block-specific copy buttons
+        const copyButton = actionContainer.createEl('button', { cls: 'llm-block-action' });
+        copyButton.setAttribute('title', 'Copy to clipboard');
+        copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
         copyButton.onclick = () => {
             navigator.clipboard.writeText(response);
+            copyButton.classList.add('copied');
             new Notice('Copied to clipboard');
+            setTimeout(() => copyButton.classList.remove('copied'), 1000);
         };
 
-        const insertButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        // Updated insert button
+        const insertButton = actionContainer.createEl('button', { cls: 'llm-block-action' });
+        insertButton.setAttribute('title', 'Insert at cursor');
         insertButton.innerHTML = InsertNoteIcon;
-        insertButton.onclick = () => this.insertAtCursor(response);
+        insertButton.onclick = () => {
+            this.insertAtCursor(response).then(() => {
+                insertButton.classList.add('copied');
+                setTimeout(() => insertButton.classList.remove('copied'), 1000);
+            });
+        };
 
-        const prependButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        // Updated prepend button
+        const prependButton = actionContainer.createEl('button', { cls: 'llm-block-action' });
+        prependButton.setAttribute('title', 'Prepend to note');
         prependButton.innerHTML = PrependNoteIcon;
-        prependButton.onclick = () => this.prependToCurrentNote(response);
+        prependButton.onclick = () => {
+            this.prependToCurrentNote(response).then(() => {
+                prependButton.classList.add('copied');
+                setTimeout(() => prependButton.classList.remove('copied'), 1000);
+            });
+        };
 
-        const appendButton = actionContainer.createEl('button', { cls: 'llm-action-button' });
+        // Updated append button
+        const appendButton = actionContainer.createEl('button', { cls: 'llm-block-action' });
+        appendButton.setAttribute('title', 'Append to note');
         appendButton.innerHTML = SaveAsNoteIcon;
-        appendButton.onclick = () => this.appendToCurrentNote(response);
+        appendButton.onclick = () => {
+            this.appendToCurrentNote(response).then(() => {
+                appendButton.classList.add('copied');
+                setTimeout(() => appendButton.classList.remove('copied'), 1000);
+            });
+        };
 
         this.chatHistory.scrollTop = this.chatHistory.scrollHeight;
     }
 
-    public async appendToCurrentNote(text: string) {
+    public async appendToCurrentNote(text: string): Promise<boolean> {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
             await this.app.vault.append(activeFile, '\n\n' + text);
             new Notice('Appended to current note');
+            return Promise.resolve(true);
         } else {
             new Notice('No active note to append to');
+            return Promise.resolve(false);
         }
     }
 
-    public async prependToCurrentNote(text: string) {
+    public async prependToCurrentNote(text: string): Promise<boolean> {
         const activeFile = this.app.workspace.getActiveFile();
         if (activeFile) {
             const currentContent = await this.app.vault.read(activeFile);
             await this.app.vault.modify(activeFile, text + '\n\n' + currentContent);
             new Notice('Prepended to current note');
+            return Promise.resolve(true);
         } else {
             new Notice('No active note to prepend to');
+            return Promise.resolve(false);
         }
     }
 
