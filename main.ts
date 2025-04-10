@@ -959,6 +959,20 @@ class LLMView extends ItemView {
                 <div class="llm-chat-text">${prompt}</div>
             </div>
         `;
+        
+        // Add action container for user message
+        const promptActionContainer = promptEl.createDiv({ cls: 'llm-message-actions' });
+        
+        // Add copy button for user message
+        const promptCopyButton = promptActionContainer.createEl('button', { cls: 'llm-block-action' });
+        promptCopyButton.setAttribute('title', 'Copy to clipboard');
+        promptCopyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+        promptCopyButton.onclick = () => {
+            navigator.clipboard.writeText(prompt);
+            promptCopyButton.classList.add('copied');
+            new Notice('Copied to clipboard');
+            setTimeout(() => promptCopyButton.classList.remove('copied'), 1000);
+        };
 
         const responseEl = this.chatHistory.createDiv({ cls: 'llm-chat-message llm-chat-ai-message' });
         responseEl.innerHTML = `
