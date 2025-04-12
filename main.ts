@@ -409,13 +409,14 @@ export default class LLMPlugin extends Plugin {
             
             .llm-copyable-block pre {
                 margin: 0;
-                padding-right: 30px; /* Space for the toolbar */
+                padding-right: 30px;
+                padding-bottom: 35px;
             }
             
             /* Toolbar styling */
             .llm-block-toolbar {
                 position: absolute;
-                top: 6px;
+                bottom: 6px;
                 right: 6px;
                 display: flex;
                 flex-direction: row;
@@ -594,7 +595,7 @@ export default class LLMPlugin extends Plugin {
             @-moz-document url-prefix() {
                 .llm-block-toolbar {
                     position: absolute;
-                    top: 6px;
+                    bottom: 6px;
                     right: 6px;
                 }
             }
@@ -605,6 +606,8 @@ export default class LLMPlugin extends Plugin {
                     .llm-block-toolbar {
                         position: fixed;
                         position: absolute;
+                        bottom: 6px;
+                        right: 6px;
                     }
                 }
             }
