@@ -5,6 +5,11 @@ import { SendIcon, CopyClipboardIcon, SaveAsNoteIcon, UserIcon, ChatbotIcon, Plu
 import MarkdownIt from 'markdown-it';
 
 const execAsync = promisify(exec);
+const SCREENSHOT_FOLDER = "llm_screenshots";
+
+interface FileWithPath extends File {
+    path?: string;
+}
 
 interface LLMPluginSettings {
     llmConnectorApiUrl: string;
@@ -62,6 +67,9 @@ export default class LLMPlugin extends Plugin {
         
         // Add CSS for copyable blocks
         this.addCopyableBlocksStyles();
+        
+        // Add CSS for image previews
+        this.addImagePreviewStyles();
         
         // Set up the click event handler for the action buttons
         this.registerDomEvent(document, 'click', this.handleBlockButtonClick.bind(this));
@@ -328,20 +336,11 @@ export default class LLMPlugin extends Plugin {
                 closeIdx++;
             }
             
-            // Extract all tokens between table_open and table_close
+            // Instead of custom rendering, let markdown-it handle the table normally
+            // Just collect all the tokens and ensure the token stream stays intact
             const tableTokens = tokens.slice(idx, closeIdx + 1);
             
-            // Generate the original HTML for the table
-            let tableHtml = '';
-            for (let i = 0; i < tableTokens.length; i++) {
-                if (originalTableRenderer && i === 0) {
-                    tableHtml += originalTableRenderer(tokens, idx + i, options, env, self);
-                } else {
-                    tableHtml += self.renderToken(tableTokens, i, options);
-                }
-            }
-            
-            // Generate plaintext version of the table for copying
+            // Generate a copy of the table content for our toolbar actions
             let tableText = '';
             let rowContent = [];
             let inRow = false;
@@ -363,29 +362,61 @@ export default class LLMPlugin extends Plugin {
                 }
             }
             
-            // Skip the rendering of the table tokens as we've already done it
-            tokens.splice(idx + 1, closeIdx - idx);
+            // Start a wrapper div before the table
+            // Note: We're only handling the table_open tag here
+            return `<div class="llm-copyable-block llm-table-block">` +
+                (originalTableRenderer ? originalTableRenderer(tokens, idx, options, env, self) : self.renderToken(tokens, idx, options));
+        };
+        
+        // Add a hook for table_close to close our wrapper and add the toolbar
+        const originalTableCloseRenderer = this.md.renderer.rules.table_close;
+        
+        this.md.renderer.rules.table_close = (tokens, idx, options, env, self) => {
+            // Get the table text from our data we collected during table_open
+            const tableTokens = tokens.slice(0, idx + 1);
+            let tableText = '';
+            let rowContent = [];
+            let inRow = false;
             
-            // Return the table with the toolbar
-            return `
-                <div class="llm-copyable-block llm-table-block">
-                    ${tableHtml}
-                    <div class="llm-block-toolbar">
-                        <button class="llm-block-action" data-action="copy" data-content="${this.escapeHtml(tableText)}" title="Copy table data">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-                        </button>
-                        <button class="llm-block-action" data-action="insert" data-content="${this.escapeHtml(tableText)}" title="Insert at cursor">
-                            ${InsertNoteIcon}
-                        </button>
-                        <button class="llm-block-action" data-action="prepend" data-content="${this.escapeHtml(tableText)}" title="Prepend to note">
-                            ${PrependNoteIcon}
-                        </button>
-                        <button class="llm-block-action" data-action="append" data-content="${this.escapeHtml(tableText)}" title="Append to note">
-                            ${SaveAsNoteIcon}
-                        </button>
-                    </div>
+            for (let i = 0; i < tableTokens.length; i++) {
+                const token = tableTokens[i];
+                
+                if (token.type === 'tr_open') {
+                    inRow = true;
+                    rowContent = [];
+                } else if (token.type === 'tr_close') {
+                    inRow = false;
+                    tableText += rowContent.join('\t') + '\n';
+                } else if ((token.type === 'th_open' || token.type === 'td_open') && i + 1 < tableTokens.length) {
+                    const contentToken = tableTokens[i + 1];
+                    if (contentToken.type === 'inline' && contentToken.content) {
+                        rowContent.push(contentToken.content);
+                    }
+                }
+            }
+            
+            // Render the normal table close tag
+            const closeTag = originalTableCloseRenderer 
+                ? originalTableCloseRenderer(tokens, idx, options, env, self) 
+                : self.renderToken(tokens, idx, options);
+                
+            // After table close, add toolbar and close wrapper div
+            return closeTag + `
+                <div class="llm-block-toolbar">
+                    <button class="llm-block-action" data-action="copy" data-content="${this.escapeHtml(tableText)}" title="Copy table data">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    </button>
+                    <button class="llm-block-action" data-action="insert" data-content="${this.escapeHtml(tableText)}" title="Insert at cursor">
+                        ${InsertNoteIcon}
+                    </button>
+                    <button class="llm-block-action" data-action="prepend" data-content="${this.escapeHtml(tableText)}" title="Prepend to note">
+                        ${PrependNoteIcon}
+                    </button>
+                    <button class="llm-block-action" data-action="append" data-content="${this.escapeHtml(tableText)}" title="Append to note">
+                        ${SaveAsNoteIcon}
+                    </button>
                 </div>
-            `;
+            </div>`;
         };
     }
     
@@ -398,7 +429,7 @@ export default class LLMPlugin extends Plugin {
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 6px;
                 margin: 0.75em 0;
-                overflow: hidden;
+                overflow: auto;
                 padding: 0.25em 0;
                 transition: box-shadow 0.2s ease-in-out;
             }
@@ -560,12 +591,15 @@ export default class LLMPlugin extends Plugin {
             .llm-table-block {
                 background: var(--background-primary);
                 padding: 0;
+                overflow-x: auto;
             }
             
             .llm-table-block table {
                 width: 100%;
                 border-collapse: collapse;
                 margin: 0;
+                table-layout: auto;
+                min-width: max-content;
             }
             
             .llm-table-block th {
@@ -611,6 +645,36 @@ export default class LLMPlugin extends Plugin {
                     }
                 }
             }
+            
+            /* Screenshot drag and drop styles */
+            .llm-prompt-input.drag-over {
+                border: 2px dashed var(--interactive-accent);
+                background-color: var(--background-primary-alt);
+            }
+            
+            /* Image input styling */
+            .llm-image-input {
+                border: 1px solid var(--background-modifier-border);
+                transition: border-color 0.2s ease;
+            }
+            
+            .llm-image-input.has-image {
+                border-color: var(--interactive-accent);
+                background-color: var(--background-primary-alt);
+            }
+            
+            .llm-image-input.data-url-image {
+                border-left: 3px solid var(--interactive-success);
+            }
+            
+            .llm-image-input.path-image {
+                border-left: 3px solid var(--interactive-accent);
+            }
+            
+            .llm-image-input.invalid-image {
+                border-color: var(--text-error);
+                border-left: 3px solid var(--text-error);
+            }
         `;
         document.head.appendChild(styleEl);
     }
@@ -642,6 +706,62 @@ export default class LLMPlugin extends Plugin {
             styleEl.remove();
         }
     }
+
+    // Add CSS styles for image previews
+    private addImagePreviewStyles() {
+        const styleEl = document.createElement('style');
+        styleEl.id = 'llm-image-preview-styles';
+        styleEl.textContent = `
+            .llm-image-previews {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 8px;
+                min-height: 0;
+                transition: all 0.2s ease;
+            }
+            
+            .llm-image-preview-wrapper {
+                position: relative;
+                width: 60px;
+                height: 60px;
+                border-radius: 4px;
+                overflow: hidden;
+                border: 1px solid var(--background-modifier-border);
+            }
+            
+            .llm-image-thumbnail {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }
+            
+            .llm-image-delete-btn {
+                position: absolute;
+                top: 2px;
+                right: 2px;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                background: rgba(0, 0, 0, 0.5);
+                color: white;
+                font-size: 16px;
+                line-height: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                border: none;
+                opacity: 0.7;
+                transition: opacity 0.2s ease;
+            }
+            
+            .llm-image-delete-btn:hover {
+                opacity: 1;
+            }
+        `;
+        document.head.appendChild(styleEl);
+    }
 }
 
 class LLMView extends ItemView {
@@ -654,6 +774,7 @@ class LLMView extends ItemView {
     private modelInput: HTMLInputElement;
     private imageInput: HTMLInputElement;
     private addImageButton: HTMLButtonElement;
+    private attachedImages: string[] = []; // Array to store image paths internally
     private commands = [
         { name: '@web', description: 'Scrape content from a URL' },
         { name: '@tavily', description: 'Search using Tavily API' },
@@ -723,6 +844,7 @@ class LLMView extends ItemView {
         });
 
         const imageInputContainer = chatContainer.createDiv({ cls: 'llm-image-input-container' });
+        // Keep the input container visible to allow manual file path entry
         this.imageInput = imageInputContainer.createEl('input', {
             type: 'text',
             placeholder: 'Enter image path',
@@ -736,8 +858,27 @@ class LLMView extends ItemView {
 
         const promptInputContainer = chatContainer.createDiv({ cls: 'llm-prompt-input-container' });
         this.promptInput = promptInputContainer.createEl('textarea', {
-            placeholder: 'Type your message here...',
+            placeholder: 'Type your message here... (drop screenshots here)',
             cls: 'llm-prompt-input'
+        });
+
+        // Add drag and drop event handlers for screenshots
+        this.promptInput.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            this.promptInput.classList.add('drag-over');
+        });
+        
+        this.promptInput.addEventListener('dragleave', () => {
+            this.promptInput.classList.remove('drag-over');
+        });
+        
+        this.promptInput.addEventListener('drop', (e) => {
+            e.preventDefault();
+            this.promptInput.classList.remove('drag-over');
+            
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+                this.handleDroppedScreenshots(e.dataTransfer.files);
+            }
         });
 
         this.promptInput.addEventListener('input', ((e: Event) => {
@@ -754,6 +895,142 @@ class LLMView extends ItemView {
         this.chatHistory = chatContainer.createDiv({ cls: 'llm-chat-history' });
     }
 
+    // Render image previews for dropped screenshots
+    private renderImagePreviews() {
+        // Find or create the preview container
+        let previewContainer = document.querySelector('.llm-image-previews') as HTMLElement;
+        if (!previewContainer) {
+            previewContainer = document.createElement('div');
+            previewContainer.className = 'llm-image-previews';
+            this.promptInput.parentElement?.insertBefore(previewContainer, this.promptInput);
+        }
+        
+        // Clear existing previews
+        previewContainer.empty();
+        
+        // Create preview for each image
+        this.attachedImages.forEach((imagePath, index) => {
+            const previewWrapper = previewContainer.createDiv({ cls: 'llm-image-preview-wrapper' });
+            
+            // Create image thumbnail
+            const img = previewWrapper.createEl('img', { cls: 'llm-image-thumbnail' });
+            
+            // For data URLs, set src directly
+            if (imagePath.startsWith('data:')) {
+                img.src = imagePath;
+            } else {
+                // For file paths, create a thumbnail or placeholder
+                // Note: We use a placeholder SVG for file paths as Obsidian may restrict direct access
+                img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+            }
+            
+            // Add delete button
+            const deleteButton = previewWrapper.createEl('button', { cls: 'llm-image-delete-btn' });
+            deleteButton.innerHTML = '×';
+            deleteButton.onclick = () => {
+                this.attachedImages.splice(index, 1);
+                this.renderImagePreviews();
+            };
+        });
+        
+        // Show/hide the container based on whether there are images
+        if (this.attachedImages.length > 0) {
+            previewContainer.style.display = 'flex';
+        } else {
+            previewContainer.style.display = 'none';
+        }
+    }
+
+    private handleDroppedScreenshots(files: FileList) {
+        // Check if adding these files would exceed the limit
+        if (this.attachedImages.length + files.length > 5) {
+            new Notice('Maximum of 5 images allowed');
+            return;
+        }
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i] as FileWithPath;
+            if (file.type.startsWith('image/')) {
+                // Save the file to vault and use the path
+                this.saveScreenshotToVault(file).then(filePath => {
+                    if (filePath) {
+                        // Add to our internal array instead of input fields
+                        this.attachedImages.push(filePath);
+                        this.renderImagePreviews();
+                        new Notice('Image added');
+                    }
+                }).catch(error => {
+                    console.error('Failed to process screenshot:', error);
+                    new Notice('Failed to process screenshot');
+                    
+                    // Fallback to data URL if saving fails
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const dataUrl = e.target?.result as string;
+                        this.attachedImages.push(dataUrl);
+                        this.renderImagePreviews();
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+        }
+    }
+    
+    // Helper method to process image input consistently
+    private processImageInput(imagePath: string, existingInput?: HTMLInputElement) {
+        if (!imagePath) return;
+        
+        // Get all image inputs
+        const imageInputs = Array.from(this.imageInput?.parentNode?.children || []) as HTMLInputElement[];
+        
+        let updatedInput: HTMLInputElement | null = null;
+        
+        if (existingInput) {
+            // Use the provided empty input
+            existingInput.value = imagePath;
+            updatedInput = existingInput;
+        } else if (imageInputs.some(input => input.value === '')) {
+            // Find any empty input if not provided
+            const emptyInput = imageInputs.find(input => input.value === '');
+            if (emptyInput) {
+                emptyInput.value = imagePath;
+                updatedInput = emptyInput;
+            }
+        } else if (imageInputs.length < 5) {
+            // Create a new input if we have less than 5
+            this.addImageInput();
+            
+            // Get the newly created input
+            const newInputs = Array.from(this.imageInput?.parentNode?.children || []) as HTMLInputElement[];
+            const newInput = newInputs[newInputs.length - 1];
+            
+            if (newInput) {
+                newInput.value = imagePath;
+                updatedInput = newInput;
+            }
+        } else {
+            new Notice('Maximum of 5 images allowed');
+            return;
+        }
+        
+        // Add a visual indicator for the image input
+        if (updatedInput) {
+            // Add the 'has-image' class to show it contains an image
+            updatedInput.classList.add('has-image');
+            
+            // If it's a data URL, add a specific class
+            if (imagePath.startsWith('data:image/')) {
+                updatedInput.classList.add('data-url-image');
+            } else {
+                updatedInput.classList.add('path-image');
+            }
+        }
+        
+        // Update UI
+        this.updateAddImageButtonVisibility();
+        new Notice('Image added to message');
+    }
+
     private addImageInput() {
         if (this.imageInput && this.imageInput.parentNode) {
             const imageInput = this.imageInput.parentNode.createEl('input', {
@@ -761,7 +1038,30 @@ class LLMView extends ItemView {
                 placeholder: 'Enter image path',
                 cls: 'llm-image-input'
             });
-            imageInput.addEventListener('input', () => this.updateAddImageButtonVisibility());
+            
+            // Add improved input validation without adding to attachedImages
+            imageInput.addEventListener('input', () => {
+                this.updateAddImageButtonVisibility();
+                
+                // Validate and style based on input content
+                const value = imageInput.value.trim();
+                
+                // Remove existing classes
+                imageInput.classList.remove('has-image', 'data-url-image', 'path-image', 'invalid-image');
+                
+                if (value) {
+                    if (value.startsWith('data:image/')) {
+                        // Valid data URL
+                        imageInput.classList.add('has-image', 'data-url-image');
+                    } else if (value.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i)) {
+                        // Path appears to be an image file
+                        imageInput.classList.add('has-image', 'path-image');
+                    } else {
+                        // Possibly invalid image path
+                        imageInput.classList.add('invalid-image');
+                    }
+                }
+            });
         }
         this.updateAddImageButtonVisibility();
     }
@@ -929,6 +1229,12 @@ class LLMView extends ItemView {
 
     private async runLLM(prompt: string, template: string, model: string, options: string[], images: string[]): Promise<string> {
         try {
+            // Process images to ensure compatibility with the API
+            const processedImages = images.map(image => {
+                // Keep data URLs and valid file paths as they are
+                return image;
+            });
+            
             const response = await fetch(`${this.plugin.settings.llmConnectorApiUrl}/llm`, {
                 method: 'POST',
                 headers: {
@@ -942,7 +1248,7 @@ class LLMView extends ItemView {
                     model,
                     options,
                     json_mode: false,
-                    images
+                    images: processedImages
                 })
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -1157,9 +1463,25 @@ class LLMView extends ItemView {
         const conversationId = this.conversationIdInput.value;
         const model = this.modelInput.value;
         const template = this.patternInput.value;
-        const images = Array.from(this.imageInput?.parentNode?.children || [])
+        
+        // Get all images from both sources - manually entered paths and screenshots
+        const manualImagePaths = Array.from(this.imageInput?.parentNode?.children || [])
             .map(input => (input as HTMLInputElement).value)
             .filter(path => path.trim() !== '');
+            
+        // Combine with drag-dropped images
+        const images = [...this.attachedImages, ...manualImagePaths];
+        
+        // Store screenshot paths for cleanup later
+        const screenshotPaths = images.filter(path => {
+            // Check for both absolute paths containing our folder name
+            // and relative paths starting with our folder name
+            const isAbsolutePath = path.includes(`/${SCREENSHOT_FOLDER}/`) || 
+                                 path.includes(`\\${SCREENSHOT_FOLDER}\\`);
+            const isRelativePath = path.startsWith(SCREENSHOT_FOLDER);
+            
+            return isAbsolutePath || isRelativePath;
+        });
 
         if (!model) {
             new Notice('Please enter a model ID before sending.');
@@ -1172,27 +1494,52 @@ class LLMView extends ItemView {
             this.appendToChatHistory(prompt, response);
             this.promptInput.value = '';
             this.patternInput.value = '';
+            
+            // Clear both image sources
+            this.attachedImages = [];
+            this.renderImagePreviews();
+            
+            // Clear image inputs (manually entered paths)
             if (this.imageInput && this.imageInput.parentNode) {
-                Array.from(this.imageInput.parentNode.children).forEach(input => (input as HTMLInputElement).value = '');
+                Array.from(this.imageInput.parentNode.children).forEach(input => {
+                    const imgInput = input as HTMLInputElement;
+                    imgInput.value = '';
+                    imgInput.classList.remove('has-image', 'data-url-image', 'path-image', 'invalid-image');
+                });
             }
+            
+            // Clean up temporary screenshot files
+            this.cleanupScreenshots(screenshotPaths);
+            
             this.updateAddImageButtonVisibility();
         } catch (error) {
             console.error('Failed to get LLM response:', error);
             new Notice('Failed to get LLM response. Please try again.');
         }
     }
-
-    private async readClipboard(): Promise<string | null> {
-        try {
-            const text = await navigator.clipboard.readText();
-            if (!text) {
-                throw new Error('Clipboard is empty');
+    
+    // Helper method to clean up temporary screenshot files
+    private async cleanupScreenshots(paths: string[]) {
+        for (const path of paths) {
+            try {
+                // First, check if this is an absolute path
+                if (path.startsWith('/') || /^[A-Za-z]:/.test(path)) {
+                    // Extract just the filename from the absolute path
+                    const filename = path.split('/').pop();
+                    if (filename) {
+                        const relativePath = `${SCREENSHOT_FOLDER}/${filename}`;
+                        if (await this.app.vault.adapter.exists(relativePath)) {
+                            await this.app.vault.adapter.remove(relativePath);
+                        }
+                    }
+                } 
+                // Handle relative path
+                else if (path.startsWith(SCREENSHOT_FOLDER) && await this.app.vault.adapter.exists(path)) {
+                    await this.app.vault.adapter.remove(path);
+                }
+            } catch (error) {
+                console.error(`Failed to remove temporary screenshot: ${path}`, error);
             }
-            return text;
-        } catch (error) {
-            console.error('Failed to read clipboard:', error);
-            new Notice('Failed to read clipboard. Please check clipboard permissions.');
-            return null;
         }
     }
 
@@ -1263,6 +1610,80 @@ class LLMView extends ItemView {
         this.promptInput.value = textBeforeCursor + command + ' ' + textAfterCursor;
         this.hideCommandDropdown();
         this.promptInput.focus();
+    }
+
+    // Save screenshot to vault and return the file path
+    private async saveScreenshotToVault(file: FileWithPath): Promise<string | null> {
+        try {
+            // Create screenshot folder if it doesn't exist
+            const folderPath = SCREENSHOT_FOLDER;
+            const adapter = this.app.vault.adapter;
+            
+            // Check if the folder exists, create if not
+            if (!(await adapter.exists(folderPath))) {
+                await this.app.vault.createFolder(folderPath);
+            }
+            
+            // Create a simple filename based on timestamp and extension
+            const extension = file.name?.split('.').pop() || 'png';
+            const timestamp = Date.now();
+            const filename = `screenshot_${timestamp}.${extension}`;
+            const relativePath = `${folderPath}/${filename}`;
+            
+            // Read file as array buffer
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const arrayBuffer = e.target?.result as ArrayBuffer;
+                        // Convert array buffer to binary data
+                        const binary = new Uint8Array(arrayBuffer);
+                        
+                        // Create binary file in vault
+                        await this.app.vault.createBinary(relativePath, binary);
+                        
+                        // Get the absolute path - handle different adapter types safely
+                        let absolutePath = relativePath;
+                        try {
+                            // Try to get the base path if the adapter supports it
+                            // @ts-ignore - Some adapters (like in desktop Obsidian) have getBasePath
+                            const basePath = this.app.vault.adapter.getBasePath?.();
+                            if (basePath) {
+                                absolutePath = `${basePath}/${relativePath}`;
+                            }
+                        } catch (error) {
+                            console.warn('Could not get absolute path, using relative path instead:', error);
+                        }
+                        
+                        // Resolve with the path (absolute if available, relative as fallback)
+                        resolve(absolutePath);
+                    } catch (error) {
+                        console.error('Failed to save screenshot:', error);
+                        reject(error);
+                    }
+                };
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsArrayBuffer(file);
+            });
+        } catch (error) {
+            console.error('Failed to save screenshot to vault:', error);
+            new Notice('Failed to save screenshot to vault');
+            return null;
+        }
+    }
+
+    private async readClipboard(): Promise<string | null> {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text) {
+                throw new Error('Clipboard is empty');
+            }
+            return text;
+        } catch (error) {
+            console.error('Failed to read clipboard:', error);
+            new Notice('Failed to read clipboard. Please check clipboard permissions.');
+            return null;
+        }
     }
 }
 
