@@ -1077,8 +1077,33 @@ class LLMView extends ItemView {
     }
 
     private async sendMessage() {
-        const prompt = this.promptInput.value.trim();
-        
+        let prompt = this.promptInput.value.trim();
+
+        // Inline @-command replacement (minimal, incremental)
+        // Only replace if @note or @clipboard appears anywhere in the prompt
+        if (/@note\b/i.test(prompt) || /@clipboard\b/i.test(prompt)) {
+            // Replace @note
+            if (/@note\b/i.test(prompt)) {
+                const noteContent = await this.readCurrentNote();
+                if (noteContent !== null) {
+                    prompt = prompt.replace(/@note\b/gi, noteContent);
+                } else {
+                    new Notice('No active note found for @note');
+                    return;
+                }
+            }
+            // Replace @clipboard
+            if (/@clipboard\b/i.test(prompt)) {
+                const clipboardContent = await this.readClipboard();
+                if (clipboardContent !== null) {
+                    prompt = prompt.replace(/@clipboard\b/gi, clipboardContent);
+                } else {
+                    new Notice('No text found in clipboard for @clipboard');
+                    return;
+                }
+            }
+        }
+
         // YouTube command with optional user prompt
         const youtubeMatch = prompt.match(/^@youtube\s+(.+?)(?:\s+(.+))?$/i);
         if (youtubeMatch) {
