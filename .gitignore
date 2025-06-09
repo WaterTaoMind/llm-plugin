@@ -11,7 +11,28 @@ data.json
 
 # Ignore backup directories and temporary files
 bk*/
-*.png
-*.md
 client_secret_*.json
 notes.md
+
+# Ignore generated/compiled files
+main.js
+main.js.map
+*.js.map
+
+# Ignore media files (not essential for code)
+*.png
+*.gif
+*.svg
+*.jpg
+*.jpeg
+
+# Ignore documentation files (keep only essential ones)
+*.md
+!README.md
+!REFACTORING_GUIDE.md
+
+# Ignore lock files (optional - can be included for exact dependency versions)
+package-lock.json
+
+# Ignore legacy files
+main-legacy.ts
