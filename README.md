@@ -1,82 +1,193 @@
-# Fabric Plugin for Obsidian
+# LLM Integration Plugin for Obsidian
 
-**Try out my new plugin, it accomplishes the same thing as this one without having to have fabric or fabric-connector installed. Currently its in BETA and hasnt been approved by Obsidian yet, but you can install using BRAT in the community plugin repo.  Install my plugin using https://github.com/chasebank87/mesh-ai**
+> **🚀 Modern & Modular**: A powerful LLM integration plugin built with clean, modular architecture for seamless AI-powered note-taking and content processing.
 
-## Updated to work with Fabric 2.0 (Enable fabric 2.0 compatability in the plugin settings)
-If you like this plugin, feel free to support the development by buying a coffee:
-<div>
-<img src="bmc_qr.png" height=80px>
-<a href="https://www.buymeacoffee.com/chasebank87" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-violet.png" alt="Buy Me A Coffee" style="height: 80px !important;width: 250px !important;" ></a>
-</div>
+Transform your Obsidian workflow with intelligent AI assistance directly integrated into your vault. This plugin provides a sophisticated chat interface, content processing capabilities, and seamless integration with multiple LLM providers.
 
-## Overview
+## ✨ Overview
 
-The Fabric Plugin is an advanced integration tool for Obsidian, designed to enhance content creation and management within the Obsidian ecosystem. It connects to external APIs to fetch and manipulate data based on user-defined patterns and models. The plugin also supports custom pattern management and YouTube link detection.
+The LLM Integration Plugin transforms Obsidian into an AI-powered knowledge workspace. Built with modern TypeScript and a modular architecture, it provides seamless integration with Large Language Models through a clean, intuitive interface.
 
-## Features
+### 🏗️ **Architecture Highlights**
 
-- **Custom Pattern Management**: Watch for changes in a designated folder and sync patterns.
-- **Community Custom Patterns**: Download and share custom patterns with other fabric users. 
-  - [Fork repo to submit your patterns](https://github.com/chasebank87/fabric-patterns)
-- **YouTube Link Detection**: Automatically detect YouTube links in notes.
-- **External API Integration**: Connect to Fabric Connector API and Tavily API for enhanced content manipulation.
-- **Dynamic Content Rendering**: Render content dynamically based on user interactions and API responses.
-- **Debugging Support**: Toggle debug mode for additional logging.
+- **🎯 Modular Design**: Clean separation of concerns across 15+ focused modules
+- **⚡ Performance**: Lightweight core with efficient service-based architecture
+- **🔧 Extensible**: Easy to customize and extend with new features
+- **🛡️ Type-Safe**: Full TypeScript coverage for robust development
 
-## Prerequisites
+## 🚀 Key Features
 
-1. **Fabric**: Install Fabric from [danielmiessler/fabric](https://github.com/danielmiessler/fabric).
-2. **Fabric Connector**: Install Fabric Connector from [chasebank87/fabric-connector](https://github.com/chasebank87/fabric-connector).
+### � **Interactive AI Chat**
+- **Dedicated Chat Interface**: Full-featured chat view with conversation history
+- **Multi-Modal Input**: Support for text, images, and document processing
+- **Real-Time Responses**: Stream responses directly in your Obsidian workspace
+- **Context Awareness**: Leverage your vault content for informed AI responses
 
-## Installation
+### � **Content Processing**
+- **Smart Note Processing**: Analyze and enhance your notes with AI insights
+- **Clipboard Integration**: Process copied content instantly with AI
+- **YouTube Transcription**: Extract and process YouTube video content
+- **Audio File Support**: Transcribe and analyze audio files
+- **Web Content Extraction**: Pull and process content from any URL
 
-To install the Fabric Plugin, follow these steps:
+### 🔌 **Flexible Integrations**
+- **Multiple LLM Providers**: Connect to various AI services via API
+- **Tavily Search**: Intelligent web search with AI-powered results
+- **Custom Patterns**: Create and manage reusable AI processing templates
+- **Image Analysis**: Upload and analyze images with AI vision models
 
-1. Download the plugin from the official repository.
-2. Place the plugin in your Obsidian's plugins folder.
-3. Enable the plugin from Obsidian's settings under "Community Plugins".
+### ⚙️ **Advanced Capabilities**
+- **Custom Model Selection**: Choose from different AI models for specific tasks
+- **Batch Processing**: Handle multiple files or content pieces efficiently
+- **Auto-Detection**: Automatically identify and process different content types
+- **Debug Mode**: Comprehensive logging for troubleshooting and optimization
 
-## Configuration
+## 📋 Requirements
 
-Configure the plugin by setting up the necessary API URLs and keys through the plugin settings tab in Obsidian.
+- **Obsidian**: Version 1.6.5 or higher
+- **LLM API Access**: API key for your preferred LLM provider
+- **Optional**: Tavily API key for web search functionality
 
-### Settings
+## 📦 Installation
 
-- `Fabric Connector API URL`: URL to the Fabric Connector API.
-- `Fabric Connector API Key`: Authentication key for the Fabric Connector API.
-- `Output Folder`: Default folder path where output files will be saved.
-- `Custom Patterns Folder`: Folder path for storing and managing custom patterns.
-- `YouTube Autodetect Enabled`: Toggle to enable or disable automatic YouTube link detection.
-- `Default Model`: Default model used for data processing.
-- `Debug`: Enable or disable debug mode for logging.
+### Method 1: Community Plugins (Recommended)
+1. Open Obsidian Settings → Community Plugins
+2. Browse and search for "LLM Integration"
+3. Install and enable the plugin
 
-### Usage
+### Method 2: Manual Installation
+1. Download the latest release from the [GitHub repository](https://github.com/WaterTaoMind/llm-plugin)
+2. Extract files to `.obsidian/plugins/unofficial-llm-integration/` in your vault
+3. Restart Obsidian and enable the plugin in settings
 
-1. **Pattern Management**: Add or remove markdown files in the custom patterns folder to manage patterns.
-2. **YouTube Transcription**: Autodetect youtube links in current note or clipboard and transcribe them using whisper and then running a pattern against.
-3. **Tavily Search**: Use the Tavily API to search for relevant content, and process through results through the selected pattern.
-4. **Input Sources**: 
-	1. ***Current Note***: Uses the current active note as the source to be sent to fabric.
-	2. ***Clipboard***: Uses the clipboard as the source to be sent to fabric.
-	3. ***Tavily***: Uses Tavily Search results as the source to be sent to fabric.
-5. **Pattern Selection**: Choose a pattern from the available custom or built in patterns to process the input data.
-6. **Models**: Select a model from the available options to process the input data and pattern.
-7. **Upload Patterns**: One way sync to fabric, will create if the custom pattern does not exist, and update if it does
-8. **Update Patterns and Models**: Refreshes the models and patterns displayed in the dropdowns.
+### Method 3: BRAT (Beta Testing)
+1. Install the BRAT plugin from Community Plugins
+2. Add repository URL: `https://github.com/WaterTaoMind/llm-plugin`
+3. Install and enable the plugin
 
-### Demonstration
+## ⚙️ Quick Setup
 
-![currentNote](https://github.com/chasebank87/unofficial-fabric-plugin/blob/main/currentNote-demo.gif)
-### Debugging
+### 1. **Configure API Access**
+Navigate to Settings → LLM Integration to configure your API connections:
 
-Toggle the debug mode in settings to view detailed logs in the console. This can help in tracing issues and understanding the flow of data.
+- **LLM API URL**: Your LLM service endpoint
+- **LLM API Key**: Authentication key for your LLM provider
+- **Tavily API Key**: (Optional) For web search functionality
 
-Contributions are welcome. Please fork the repository, make changes, and submit a pull request for review.
+### 2. **Set Content Preferences**
+- **Output Folder**: Where AI-processed content gets saved
+- **Custom Patterns Folder**: Location for your reusable AI templates
+- **Default Model**: Your preferred AI model (e.g., gpt-4, claude-3)
 
-## License
+### 3. **Enable Features**
+- **YouTube Auto-detect**: Automatically process YouTube links
+- **Audio File Processing**: Enable audio transcription
+- **Debug Mode**: Turn on for detailed logging
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### 4. **Start Using**
+- Click the chat icon in the ribbon to open the AI interface
+- Or use the command palette: "Open LLM Chat"
+
+## 🎯 Usage Guide
+
+### **Core Workflows**
+
+#### 💬 **AI Chat Interface**
+1. **Open Chat**: Click the chat icon in the ribbon or use Command Palette
+2. **Start Conversation**: Type your questions or requests
+3. **Upload Content**: Drag and drop images or documents for analysis
+4. **Review Responses**: Get formatted AI responses with syntax highlighting
+
+#### 📝 **Content Processing**
+- **Process Current Note**: Analyze and enhance your active note
+- **Clipboard Processing**: Send copied content directly to AI
+- **Web Search**: Use Tavily integration for intelligent web research
+- **Batch Operations**: Process multiple files or content pieces
+
+#### 🎨 **Custom Patterns**
+- **Create Templates**: Build reusable AI processing patterns
+- **Manage Library**: Organize patterns in your designated folder
+- **Auto-Sync**: Patterns update automatically when files change
+- **Share Patterns**: Export and share with the community
+
+#### 🔧 **Advanced Features**
+- **Multi-Modal Input**: Text, images, audio, and documents
+- **Model Selection**: Switch between different AI models
+- **YouTube Integration**: Automatic video transcription and analysis
+- **Web Content**: Extract and process content from any URL
+
+## 🏗️ Technical Architecture
+
+### **Modern Modular Design**
+
+The plugin is built with a clean, maintainable architecture that separates concerns:
+
+```
+src/
+├── core/                    # Plugin foundation
+│   ├── LLMPlugin.ts        # Main orchestration
+│   └── types.ts            # Type definitions
+├── services/               # Business logic
+│   ├── LLMService.ts       # API communication
+│   ├── CommandService.ts   # Command processing
+│   └── ImageService.ts     # Media handling
+├── ui/                     # User interface
+│   ├── LLMView.ts         # Chat interface
+│   ├── SettingsTab.ts     # Configuration
+│   └── components/        # Reusable components
+└── utils/                 # Helper functions
+    └── markdown.ts        # Content processing
+```
+
+### **Architecture Benefits**
+- **🎯 Focused Modules**: Each component has a single, clear responsibility
+- **🔧 Easy Maintenance**: Modular design makes updates and fixes simple
+- **⚡ Performance**: Lightweight core with efficient service architecture
+- **🛡️ Type Safety**: Full TypeScript coverage prevents runtime errors
+- **🧪 Testable**: Services can be unit tested independently
+
+## � Troubleshooting
+
+### **Debug Mode**
+Enable debug mode in plugin settings for detailed logging:
+- API request/response details
+- Service interaction traces
+- Error diagnostics
+- Performance metrics
+
+### **Common Solutions**
+- **Connection Issues**: Verify API URLs and keys are correct
+- **Performance**: Check console for service bottlenecks
+- **File Processing**: Ensure proper folder permissions
+- **Pattern Sync**: Validate markdown file formats
+
+## 🤝 Contributing
+
+We welcome contributions! The modular architecture makes development straightforward:
+
+### **How to Contribute**
+1. **Fork** the repository
+2. **Create** a feature branch
+3. **Make** your changes
+4. **Test** thoroughly
+5. **Submit** a pull request
+
+### **Development Areas**
+- **New Services**: Add focused service modules
+- **UI Components**: Build reusable interface elements
+- **Utilities**: Enhance content processing capabilities
+- **Documentation**: Improve guides and examples
+
+## 📄 License
+
+MIT License - see the [LICENSE](LICENSE) file for details.
+
+## � Links
+
+- **Repository**: [GitHub](https://github.com/WaterTaoMind/llm-plugin)
+- **Issues**: [Report Bugs](https://github.com/WaterTaoMind/llm-plugin/issues)
+- **Discussions**: [Community Forum](https://github.com/WaterTaoMind/llm-plugin/discussions)
 
 ---
 
-For more information on usage and configuration, refer to the detailed comments within the codebase or visit the [Fabric Plugin Documentation](#).
+*Built with ❤️ for the Obsidian community*
