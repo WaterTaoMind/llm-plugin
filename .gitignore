@@ -8,3 +8,10 @@ node_modules/
 # Ignore macOS system files
 .DS_Store
 data.json
+
+# Ignore backup directories and temporary files
+bk*/
+*.png
+*.md
+client_secret_*.json
+notes.md
