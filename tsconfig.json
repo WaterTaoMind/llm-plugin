@@ -33,6 +33,6 @@
   ],
   "exclude": [
     "node_modules",
-    "main.ts"
+    "main-legacy.ts"
   ]
 }

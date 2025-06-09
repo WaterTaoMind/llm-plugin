@@ -28,7 +28,7 @@ esbuild.build({
     banner: {
         js: banner,
     },
-    entryPoints: ["main-refactored.ts"], // Use refactored entry point
+    entryPoints: ["main.ts"], // Now using the refactored main.ts
     bundle: true,
     plugins: [aliasPlugin],
     external: [
