@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -18,9 +17,22 @@
       "ES7"
     ],
     "jsx": "react",
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/core/*": ["./src/core/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/ui/*": ["./src/ui/*"],
+      "@/utils/*": ["./src/utils/*"],
+      "@/constants/*": ["./src/constants/*"]
+    }
   },
   "include": [
-    "**/*.ts"
+    "**/*.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "main.ts"
   ]
 }

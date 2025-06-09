@@ -1,6 +1,7 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
+import path from "path";
 
 const banner =
 `/*
@@ -11,12 +12,25 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = (process.argv[2] === "production");
 
+// Plugin to resolve path aliases
+const aliasPlugin = {
+    name: 'alias',
+    setup(build) {
+        build.onResolve({ filter: /^@\// }, args => {
+            return {
+                path: path.resolve(args.resolveDir, args.path.replace(/^@\//, 'src/'))
+            }
+        })
+    }
+}
+
 esbuild.build({
     banner: {
         js: banner,
     },
-    entryPoints: ["main.ts"],
+    entryPoints: ["main-refactored.ts"], // Use refactored entry point
     bundle: true,
+    plugins: [aliasPlugin],
     external: [
         "obsidian",
         "electron",
@@ -38,4 +52,5 @@ esbuild.build({
     sourcemap: prod ? false : "inline",
     treeShaking: true,
     outfile: "main.js",
+    resolveExtensions: ['.ts', '.js'],
 }).catch(() => process.exit(1));
