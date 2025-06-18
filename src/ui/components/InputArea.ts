@@ -1,12 +1,13 @@
 import { Notice } from 'obsidian';
-import { Command } from '../../core/types';
-import { SendIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
+import { Command, ModelConfig, TemplateConfig } from '../../core/types';
+import { SendIcon, ToolsIcon, AttachmentIcon, ConversationIcon } from '../../constants/icons';
+import { PillButton } from './PillButton';
+import { ModelSelector } from './ModelSelector';
+import { TemplateSelector } from './TemplateSelector';
+import { CIDManager } from './CIDManager';
 
 export class InputArea {
     public container: HTMLElement;
-    private conversationIdInput: HTMLInputElement;
-    private modelInput: HTMLInputElement;
-    private patternInput: HTMLInputElement;
     private promptInput: HTMLTextAreaElement;
     private sendButton: HTMLButtonElement;
     private dropdown: HTMLElement | null = null;
@@ -17,9 +18,24 @@ export class InputArea {
     private addImageButton: HTMLButtonElement;
     private imageInputContainer: HTMLElement;
 
+    // New pill-based components
+    private pillContainer: HTMLElement;
+    private toolsPill: PillButton;
+    private attachmentPill: PillButton;
+    private cidPill: PillButton;
+    private modelSelector: ModelSelector;
+    private templateSelector: TemplateSelector;
+    private cidManager: CIDManager;
+
+    // State
+    private selectedModel: string = '';
+    private selectedTemplate: string = '';
+    private conversationId: string = '';
+    private models: ModelConfig[] = [];
+    private templates: TemplateConfig[] = [];
+
     // Event handlers
     public onSendMessage: () => void = () => {};
-
     public onGetConversationId: () => void = () => {};
     public onClearConversationId: () => void = () => {};
 
@@ -29,61 +45,59 @@ export class InputArea {
     }
 
     private createInputInterface() {
-        // Conversation ID section
-        const cidContainer = this.container.createDiv({ cls: 'llm-cid-container' });
+        // Create pill container
+        this.pillContainer = this.container.createDiv({ cls: 'llm-pill-container' });
 
-        const getCidButton = cidContainer.createEl('button', { cls: 'llm-get-cid-button' });
-        getCidButton.innerHTML = GetCidIcon;
-        getCidButton.addEventListener('click', () => this.onGetConversationId());
-
-        this.conversationIdInput = cidContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Conversation ID (optional)',
-            cls: 'llm-conversation-id-input'
+        // Create pill buttons
+        this.toolsPill = new PillButton(this.pillContainer, {
+            text: '工具',
+            icon: ToolsIcon,
+            onClick: () => this.showCommandDropdown()
         });
 
-        const clearCidButton = cidContainer.createEl('button', { cls: 'llm-clear-cid-button' });
-        clearCidButton.innerHTML = 'Clear';
-        clearCidButton.addEventListener('click', () => this.onClearConversationId());
-
-        // Model and pattern inputs
-        const modelTemplateContainer = this.container.createDiv({ cls: 'llm-model-template-container' });
-
-        this.modelInput = modelTemplateContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter model name',
-            cls: 'llm-model-input'
+        this.attachmentPill = new PillButton(this.pillContainer, {
+            text: '附件',
+            icon: AttachmentIcon,
+            onClick: () => this.toggleAttachmentPanel()
         });
 
-        this.patternInput = modelTemplateContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter LLM template',
-            cls: 'llm-pattern-input'
+        this.cidPill = new PillButton(this.pillContainer, {
+            text: 'CID',
+            icon: ConversationIcon,
+            onClick: () => this.toggleCIDManager()
         });
 
-        // Image path input section (manual entry)
-        this.imageInputContainer = this.container.createDiv({ cls: 'llm-image-input-container' });
-        this.imagePathInput = this.imageInputContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter document path',
-            cls: 'llm-image-input'
+        // Create selectors container
+        const selectorsContainer = this.container.createDiv({ cls: 'llm-selectors-container' });
+
+        // Create model selector
+        const modelContainer = selectorsContainer.createDiv({ cls: 'llm-model-container' });
+        this.modelSelector = new ModelSelector(modelContainer, this.models, (model) => {
+            this.selectedModel = model;
         });
-        this.addImageButton = this.imageInputContainer.createEl('button', {
-            cls: 'llm-add-image-button'
+
+        // Create template selector
+        const templateContainer = selectorsContainer.createDiv({ cls: 'llm-template-container' });
+        this.templateSelector = new TemplateSelector(templateContainer, this.templates, (template) => {
+            this.selectedTemplate = template;
         });
-        this.addImageButton.innerHTML = PlusIcon;
-        this.addImageButton.addEventListener('click', () => this.addImageInput());
 
-        // Setup image path input handlers
-        this.setupImagePathInputHandlers();
+        // Create CID manager
+        this.cidManager = new CIDManager(
+            this.pillContainer,
+            () => this.onGetConversationId(),
+            () => this.handleClearConversationId(),
+            (id) => this.conversationId = id
+        );
 
-        // Image preview section
-        this.imagePreviewContainer = this.container.createDiv({ cls: 'llm-image-previews' });
+        // Create attachment panel (initially hidden)
+        this.createAttachmentPanel();
 
-        // Prompt input section
-        const promptInputContainer = this.container.createDiv({ cls: 'llm-prompt-input-container' });
+        // Create unified input container
+        const inputContainer = this.container.createDiv({ cls: 'llm-unified-input-container' });
 
-        this.promptInput = promptInputContainer.createEl('textarea', {
+        // Create auto-expanding textarea
+        this.promptInput = inputContainer.createEl('textarea', {
             placeholder: 'Type your message here... (drop screenshots here)',
             cls: 'llm-prompt-input'
         });
@@ -91,14 +105,68 @@ export class InputArea {
         // Setup prompt input event handlers
         this.setupPromptInputHandlers();
 
-        this.sendButton = promptInputContainer.createEl('button', { cls: 'llm-send-button' });
+        // Create send button
+        this.sendButton = inputContainer.createEl('button', { cls: 'llm-send-button' });
         this.sendButton.innerHTML = SendIcon;
         this.sendButton.addEventListener('click', () => this.handleSendMessage());
     }
 
+    private createAttachmentPanel() {
+        // Image path input section (initially hidden)
+        this.imageInputContainer = this.container.createDiv({
+            cls: 'llm-image-input-container',
+            attr: { style: 'display: none;' }
+        });
+
+        this.imagePathInput = this.imageInputContainer.createEl('input', {
+            type: 'text',
+            placeholder: 'Enter document path',
+            cls: 'llm-image-input'
+        });
+
+        this.addImageButton = this.imageInputContainer.createEl('button', {
+            cls: 'llm-add-image-button'
+        });
+        this.addImageButton.innerHTML = '+';
+        this.addImageButton.addEventListener('click', () => this.addImageInput());
+
+        // Setup image path input handlers
+        this.setupImagePathInputHandlers();
+
+        // Image preview section
+        this.imagePreviewContainer = this.container.createDiv({ cls: 'llm-image-previews' });
+    }
+
+    private toggleAttachmentPanel() {
+        const isVisible = this.imageInputContainer.style.display !== 'none';
+        this.imageInputContainer.style.display = isVisible ? 'none' : 'block';
+        this.attachmentPill.setActive(!isVisible);
+    }
+
+    private toggleCIDManager() {
+        if (this.cidManager.isPopupVisible()) {
+            this.cidManager.hidePopup();
+            this.cidPill.setActive(false);
+        } else {
+            this.cidManager.showPopup();
+            this.cidPill.setActive(true);
+        }
+    }
+
+    private handleClearConversationId() {
+        this.conversationId = '';
+        this.onClearConversationId();
+        this.cidManager.setConversationId('');
+    }
+
     private setupPromptInputHandlers() {
-        // Command autocomplete
-        this.promptInput.addEventListener('input', (e) => this.handlePromptInput(e as InputEvent));
+        // Auto-expanding textarea
+        this.promptInput.addEventListener('input', () => {
+            this.autoResizeTextarea();
+            this.handlePromptInput();
+        });
+
+        // Keyboard shortcuts
         this.promptInput.addEventListener('keydown', (e) => this.handlePromptKeydown(e));
 
         // Drag and drop for images
@@ -119,6 +187,11 @@ export class InputArea {
                 this.handleDroppedFiles(e.dataTransfer.files);
             }
         });
+    }
+
+    private autoResizeTextarea() {
+        this.promptInput.style.height = 'auto';
+        this.promptInput.style.height = Math.min(this.promptInput.scrollHeight, 200) + 'px';
     }
 
     private setupImagePathInputHandlers() {
@@ -231,10 +304,9 @@ export class InputArea {
         }
     }
 
-    private handlePromptInput(e: InputEvent) {
-        const target = e.target as HTMLTextAreaElement;
-        const cursorPosition = target.selectionStart;
-        const textBeforeCursor = target.value.substring(0, cursorPosition);
+    private handlePromptInput() {
+        const cursorPosition = this.promptInput.selectionStart;
+        const textBeforeCursor = this.promptInput.value.substring(0, cursorPosition);
 
         if (textBeforeCursor.endsWith('@')) {
             this.showCommandDropdown();
@@ -244,19 +316,27 @@ export class InputArea {
     }
 
     private handlePromptKeydown(e: KeyboardEvent) {
-        if (!this.dropdown) return;
+        // Ctrl+Enter to send message
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            this.handleSendMessage();
+            return;
+        }
 
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            // Handle selection navigation
-        } else if (e.key === 'Enter' && this.dropdown.style.display !== 'none') {
-            e.preventDefault();
-            const selected = this.dropdown.querySelector('.selected');
-            if (selected) {
-                this.insertCommand(selected.textContent || '');
+        // Handle command dropdown navigation
+        if (this.dropdown && this.dropdown.style.display !== 'none') {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                // Handle selection navigation
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selected = this.dropdown.querySelector('.selected');
+                if (selected) {
+                    this.insertCommand(selected.textContent || '');
+                }
+            } else if (e.key === 'Escape') {
+                this.hideCommandDropdown();
             }
-        } else if (e.key === 'Escape') {
-            this.hideCommandDropdown();
         }
     }
 
@@ -423,16 +503,19 @@ export class InputArea {
 
     clearInputs() {
         this.promptInput.value = '';
-        this.patternInput.value = '';
+        this.templateSelector.clearSelection();
         this.clearImages();
+        this.autoResizeTextarea();
     }
 
     setConversationId(id: string) {
-        this.conversationIdInput.value = id;
+        this.conversationId = id;
+        this.cidManager.setConversationId(id);
     }
 
     clearConversationId() {
-        this.conversationIdInput.value = '';
+        this.conversationId = '';
+        this.cidManager.setConversationId('');
     }
 
     getPromptValue(): string {
@@ -459,24 +542,37 @@ export class InputArea {
     }
 
     setDefaultModel(model: string) {
-        if (!this.modelInput.value) {
-            this.modelInput.value = model;
+        if (!this.selectedModel) {
+            this.modelSelector.setDefaultModel(model);
+            this.selectedModel = model;
         }
     }
 
     getModelValue(): string {
-        return this.modelInput.value;
+        return this.selectedModel;
     }
 
     getPatternValue(): string {
-        return this.patternInput.value;
+        return this.selectedTemplate;
     }
 
     setPatternValue(value: string) {
-        this.patternInput.value = value;
+        this.selectedTemplate = value;
+        this.templateSelector.setSelectedTemplate(value);
     }
 
     getConversationId(): string {
-        return this.conversationIdInput.value;
+        return this.conversationId;
+    }
+
+    // New methods for configuration
+    setModels(models: ModelConfig[]) {
+        this.models = models;
+        this.modelSelector.updateModels(models);
+    }
+
+    setTemplates(templates: TemplateConfig[]) {
+        this.templates = templates;
+        this.templateSelector.updateTemplates(templates);
     }
 }

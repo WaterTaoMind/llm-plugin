@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
+import { ModelConfig, TemplateConfig } from '../core/types';
 
 export class LLMSettingTab extends PluginSettingTab {
     plugin: LLMPlugin;
@@ -101,6 +102,44 @@ export class LLMSettingTab extends PluginSettingTab {
                 .onChange(async (value) => {
                     this.plugin.settings.debug = value;
                     await this.plugin.saveSettings();
+                }));
+
+        // Model Configuration Section
+        containerEl.createEl('h3', {text: 'Model Configuration'});
+
+        new Setting(containerEl)
+            .setName('Model List')
+            .setDesc('Configure available models (JSON format: [{"id": "model-id", "label": "Display Name"}])')
+            .addTextArea(text => text
+                .setPlaceholder('[{"id": "gpt-4o", "label": "GPT-4o"}]')
+                .setValue(JSON.stringify(this.plugin.settings.modelList, null, 2))
+                .onChange(async (value) => {
+                    try {
+                        const modelList = JSON.parse(value) as ModelConfig[];
+                        this.plugin.settings.modelList = modelList;
+                        await this.plugin.saveSettings();
+                    } catch (error) {
+                        console.error('Invalid JSON for model list:', error);
+                    }
+                }));
+
+        // Template Configuration Section
+        containerEl.createEl('h3', {text: 'Template Configuration'});
+
+        new Setting(containerEl)
+            .setName('Template List')
+            .setDesc('Configure available templates (JSON format: [{"id": "template-id", "label": "Display Name"}])')
+            .addTextArea(text => text
+                .setPlaceholder('[{"id": "summarize", "label": "Summarize"}]')
+                .setValue(JSON.stringify(this.plugin.settings.templateList, null, 2))
+                .onChange(async (value) => {
+                    try {
+                        const templateList = JSON.parse(value) as TemplateConfig[];
+                        this.plugin.settings.templateList = templateList;
+                        await this.plugin.saveSettings();
+                    } catch (error) {
+                        console.error('Invalid JSON for template list:', error);
+                    }
                 }));
     }
 }

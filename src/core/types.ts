@@ -1,5 +1,18 @@
 // Core type definitions for the LLM Plugin
 
+export interface ModelConfig {
+    id: string;
+    label: string;
+    provider?: string;
+    description?: string;
+}
+
+export interface TemplateConfig {
+    id: string;
+    label: string;
+    description?: string;
+}
+
 export interface LLMPluginSettings {
     llmConnectorApiUrl: string;
     llmConnectorApiKey: string;
@@ -11,6 +24,8 @@ export interface LLMPluginSettings {
     defaultPostProcessingPattern: string;
     debug: boolean;
     tavilyApiKey: string;
+    modelList: ModelConfig[];
+    templateList: TemplateConfig[];
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
@@ -23,7 +38,19 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     defaultModel: 'gpt-4o',
     defaultPostProcessingPattern: '',
     debug: false,
-    tavilyApiKey: ''
+    tavilyApiKey: '',
+    modelList: [
+        { id: 'gpt-4o', label: 'GPT-4o' },
+        { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+        { id: 'custom', label: 'Custom' }
+    ],
+    templateList: [
+        { id: '', label: 'No Template' },
+        { id: 'summarize', label: 'Summarize' },
+        { id: 'explain', label: 'Explain' },
+        { id: 'custom', label: 'Custom' }
+    ]
 };
 
 export interface FileWithPath extends File {

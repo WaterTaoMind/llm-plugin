@@ -12,6 +12,7 @@ export class LLMPlugin extends Plugin {
 
     async onload() {
         await this.loadSettings();
+        await this.ensureDataFile();
 
         // Initialize core services
         this.markdownProcessor = new MarkdownProcessor();
@@ -25,6 +26,40 @@ export class LLMPlugin extends Plugin {
 
         // Set up the global click event handler for block action buttons
         this.registerDomEvent(document, 'click', this.handleBlockButtonClick.bind(this));
+    }
+
+    private async ensureDataFile() {
+        try {
+            // Use a simpler approach for file path
+            const dataPath = 'data.json';
+
+            // Check if data.json exists in plugin folder
+            const exists = await this.app.vault.adapter.exists(dataPath);
+            if (!exists) {
+                // Create default data.json
+                const defaultData = {
+                    models: [
+                        { id: 'gpt-4o', label: 'GPT-4o', provider: 'OpenAI', description: 'Most capable GPT-4 model' },
+                        { id: 'gpt-4o-mini', label: 'GPT-4o Mini', provider: 'OpenAI', description: 'Faster, cost-effective GPT-4 model' },
+                        { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet', provider: 'Anthropic', description: 'Most intelligent Claude model' },
+                        { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku', provider: 'Anthropic', description: 'Fastest Claude model' },
+                        { id: 'custom', label: 'Custom Model', provider: 'Custom', description: 'Enter your own model ID' }
+                    ],
+                    templates: [
+                        { id: '', label: 'No Template', description: 'Use without any template' },
+                        { id: 'summarize', label: 'Summarize', description: 'Summarize the content concisely' },
+                        { id: 'explain', label: 'Explain', description: 'Explain the concept in detail' },
+                        { id: 'analyze', label: 'Analyze', description: 'Provide detailed analysis' },
+                        { id: 'custom', label: 'Custom Template', description: 'Enter your own template' }
+                    ]
+                };
+
+                await this.app.vault.adapter.write(dataPath, JSON.stringify(defaultData, null, 2));
+                console.log('Created default data.json for LLM plugin');
+            }
+        } catch (error) {
+            console.warn('Could not create data.json file:', error);
+        }
     }
 
     async onunload() {
