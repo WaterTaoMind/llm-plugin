@@ -63,6 +63,10 @@ export class LLMView extends ItemView {
         // Set available commands
         this.inputArea.setCommands(this.commandService.getCommands());
 
+        // Set models and templates from configuration
+        this.inputArea.setModels(this.plugin.settings.modelList);
+        this.inputArea.setTemplates(this.plugin.settings.templateList);
+
         // Set default model if available
         if (this.plugin.settings.defaultModel) {
             this.inputArea.setDefaultModel(this.plugin.settings.defaultModel);
