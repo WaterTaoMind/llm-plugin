@@ -4,16 +4,18 @@ import { ChatMessage, LLMRequest, RequestState } from '../core/types';
 import { LLMService } from '../services/LLMService';
 import { CommandService } from '../services/CommandService';
 import { ImageService } from '../services/ImageService';
+import { ConfigurationService } from '../services/ConfigurationService';
 import { ChatHistory } from './components/ChatHistory';
-import { InputArea } from './components/InputArea';
+import { UnifiedInputBox } from './components/UnifiedInputBox';
 
 export class LLMView extends ItemView {
     private plugin: LLMPlugin;
     private llmService: LLMService;
     private commandService: CommandService;
     private imageService: ImageService;
+    private configurationService: ConfigurationService;
     private chatHistory: ChatHistory;
-    private inputArea: InputArea;
+    private inputArea: UnifiedInputBox;
     private requestState: RequestState = {
         isLoading: false,
         error: null,
@@ -28,6 +30,7 @@ export class LLMView extends ItemView {
         this.llmService = new LLMService(plugin.settings);
         this.commandService = new CommandService(this.app, this.llmService);
         this.imageService = new ImageService(this.app);
+        this.configurationService = new ConfigurationService(this.app);
     }
 
     getViewType(): string {
@@ -43,33 +46,48 @@ export class LLMView extends ItemView {
         containerEl.empty();
         containerEl.addClass('llm-chat-view');
 
-        this.createChatInterface(containerEl);
+        await this.createChatInterface(containerEl);
     }
 
-    private createChatInterface(container: HTMLElement) {
+    private async createChatInterface(container: HTMLElement) {
         const chatContainer = container.createDiv({ cls: 'llm-chat-container' });
 
         // Initialize chat history
         const historyContainer = chatContainer.createDiv();
         this.chatHistory = new ChatHistory(historyContainer);
 
-        // Initialize input area
+        // Initialize unified input area
         const inputContainer = chatContainer.createDiv();
-        this.inputArea = new InputArea(inputContainer);
+        this.inputArea = new UnifiedInputBox(inputContainer);
 
         // Setup event handlers
         this.setupEventHandlers();
 
-        // Set available commands
-        this.inputArea.setCommands(this.commandService.getCommands());
+        // Load configuration and set up input area
+        await this.loadConfiguration();
+    }
 
-        // Set models and templates from configuration
-        this.inputArea.setModels(this.plugin.settings.modelList);
-        this.inputArea.setTemplates(this.plugin.settings.templateList);
+    private async loadConfiguration() {
+        try {
+            const config = await this.configurationService.loadConfiguration();
 
-        // Set default model if available
-        if (this.plugin.settings.defaultModel) {
-            this.inputArea.setDefaultModel(this.plugin.settings.defaultModel);
+            // Set available commands
+            this.inputArea.setCommands(this.commandService.getCommands());
+
+            // Set models and templates from data.json
+            this.inputArea.setModels(config.models);
+            this.inputArea.setTemplates(config.templates);
+
+            // Set default model if available
+            if (this.plugin.settings.defaultModel) {
+                const defaultModel = config.models.find(m => m.id === this.plugin.settings.defaultModel);
+                if (defaultModel) {
+                    // The UnifiedInputBox will automatically select the first model
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load configuration:', error);
+            new Notice('Failed to load model/template configuration');
         }
     }
 

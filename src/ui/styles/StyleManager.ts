@@ -9,6 +9,7 @@ export class StyleManager {
         this.addPillButtonStyles();
         this.addSelectorStyles();
         this.addCIDPopupStyles();
+        this.addUnifiedInputStyles();
     }
 
     removeStyles() {
@@ -733,6 +734,263 @@ export class StyleManager {
             .llm-cid-close-button:hover {
                 background: var(--background-modifier-hover);
                 color: var(--text-normal);
+            }
+        `);
+        this.styleElements.push(styleEl);
+    }
+
+    private addUnifiedInputStyles() {
+        const styleEl = this.createStyleElement('llm-unified-input-styles', `
+            /* Main unified input container */
+            .llm-unified-input-box {
+                display: flex;
+                flex-direction: column;
+                background: var(--background-primary);
+                border: 2px solid var(--background-modifier-border);
+                border-radius: 16px;
+                padding: 16px;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .llm-unified-input-box:focus-within {
+                border-color: var(--interactive-accent);
+                box-shadow: 0 4px 20px rgba(var(--interactive-accent-rgb), 0.15);
+                transform: translateY(-1px);
+            }
+
+            .llm-unified-input-box.drag-over {
+                border-color: var(--interactive-accent);
+                background: var(--background-primary-alt);
+                border-style: dashed;
+            }
+
+            .llm-unified-input-box.loading {
+                opacity: 0.7;
+                pointer-events: none;
+            }
+
+            /* Pills container inside input box */
+            .llm-input-pills {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid var(--background-modifier-border);
+            }
+
+            /* Individual pills */
+            .llm-input-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 12px;
+                background: var(--background-secondary);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 20px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                font-size: 12px;
+                font-weight: 500;
+                color: var(--text-muted);
+                white-space: nowrap;
+                user-select: none;
+            }
+
+            .llm-input-pill:hover {
+                background: var(--background-modifier-hover);
+                border-color: var(--interactive-accent);
+                color: var(--text-normal);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .llm-input-pill.selected {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                border-color: var(--interactive-accent);
+            }
+
+            .llm-input-pill svg {
+                width: 14px;
+                height: 14px;
+                opacity: 0.8;
+            }
+
+            .llm-input-pill.selected svg {
+                opacity: 1;
+            }
+
+            /* Model and template pills with dropdown indicators */
+            .llm-model-pill,
+            .llm-template-pill {
+                padding-right: 8px;
+            }
+
+            .llm-model-pill svg:last-child,
+            .llm-template-pill svg:last-child {
+                width: 12px;
+                height: 12px;
+                margin-left: 4px;
+                opacity: 0.6;
+            }
+
+            /* Textarea container */
+            .llm-textarea-container {
+                flex: 1;
+                position: relative;
+            }
+
+            /* Unified textarea */
+            .llm-unified-textarea {
+                width: 100%;
+                min-height: 40px;
+                max-height: 200px;
+                padding: 0;
+                border: none;
+                background: transparent;
+                color: var(--text-normal);
+                font-size: 15px;
+                font-family: var(--font-text);
+                line-height: 1.5;
+                resize: none;
+                outline: none;
+                overflow-y: auto;
+            }
+
+            .llm-unified-textarea::placeholder {
+                color: var(--text-muted);
+                opacity: 0.7;
+            }
+
+            /* Send button */
+            .llm-unified-send-button {
+                position: absolute;
+                bottom: 16px;
+                right: 16px;
+                width: 40px;
+                height: 40px;
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                border: none;
+                border-radius: 12px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 2px 8px rgba(var(--interactive-accent-rgb), 0.3);
+            }
+
+            .llm-unified-send-button:hover {
+                background: var(--interactive-accent-hover);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(var(--interactive-accent-rgb), 0.4);
+            }
+
+            .llm-unified-send-button:disabled {
+                background: var(--background-modifier-border);
+                color: var(--text-muted);
+                cursor: not-allowed;
+                transform: none;
+                box-shadow: none;
+            }
+
+            .llm-unified-send-button svg {
+                width: 18px;
+                height: 18px;
+            }
+
+            /* Unified dropdowns */
+            .llm-unified-dropdown {
+                position: absolute;
+                background: var(--background-primary);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 12px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+                z-index: 1000;
+                max-height: 300px;
+                overflow-y: auto;
+                min-width: 200px;
+                backdrop-filter: blur(10px);
+            }
+
+            .llm-dropdown-option {
+                padding: 12px 16px;
+                cursor: pointer;
+                transition: background-color 0.15s ease;
+                border-bottom: 1px solid var(--background-modifier-border);
+            }
+
+            .llm-dropdown-option:last-child {
+                border-bottom: none;
+            }
+
+            .llm-dropdown-option:hover {
+                background: var(--background-modifier-hover);
+            }
+
+            .llm-dropdown-option.selected {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+
+            .llm-option-title {
+                font-weight: 500;
+                font-size: 14px;
+                color: var(--text-normal);
+                margin-bottom: 2px;
+            }
+
+            .llm-option-desc {
+                font-size: 12px;
+                color: var(--text-muted);
+                opacity: 0.8;
+            }
+
+            .llm-dropdown-option.selected .llm-option-title,
+            .llm-dropdown-option.selected .llm-option-desc {
+                color: var(--text-on-accent);
+            }
+
+            /* Responsive design */
+            @media (max-width: 768px) {
+                .llm-input-pills {
+                    gap: 6px;
+                }
+
+                .llm-input-pill {
+                    padding: 4px 8px;
+                    font-size: 11px;
+                }
+
+                .llm-unified-input-box {
+                    padding: 12px;
+                }
+
+                .llm-unified-send-button {
+                    width: 36px;
+                    height: 36px;
+                    bottom: 12px;
+                    right: 12px;
+                }
+            }
+
+            /* Dark mode enhancements */
+            .theme-dark .llm-unified-input-box {
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            }
+
+            .theme-dark .llm-unified-input-box:focus-within {
+                box-shadow: 0 4px 20px rgba(var(--interactive-accent-rgb), 0.25);
+            }
+
+            .theme-dark .llm-unified-dropdown {
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(20px);
             }
         `);
         this.styleElements.push(styleEl);

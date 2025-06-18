@@ -3,11 +3,14 @@
 export interface ModelConfig {
     id: string;
     label: string;
+    provider?: string;
+    description?: string;
 }
 
 export interface TemplateConfig {
     id: string;
     label: string;
+    description?: string;
 }
 
 export interface LLMPluginSettings {
