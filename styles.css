@@ -2,22 +2,335 @@
   --dropdown-top-offset: 5px;
   --dropdown-left-offset: 0;
   --dropdown-width-offset: 0;
+
+  /* Enhanced UI Variables */
+  --llm-border-radius: 16px;
+  --llm-border-radius-small: 8px;
+  --llm-spacing: 16px;
+  --llm-spacing-small: 8px;
+  --llm-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --llm-shadow-light: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --llm-shadow-medium: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --llm-shadow-heavy: 0 8px 32px rgba(0, 0, 0, 0.15);
+
+  /* Interactive accent RGB for transparency effects */
+  --interactive-accent-rgb: 123, 108, 196;
 }
 
 .llm-chat-view {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1rem;
-  background-color: var(--background-primary);
+  padding: 20px;
+  background: linear-gradient(135deg, var(--background-primary) 0%, var(--background-secondary) 100%);
   border-left: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+}
+
+.llm-chat-view::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 80%, rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .llm-chat-container {
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 0.5rem;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+  /* Ensure dropdowns are not clipped */
+  overflow: visible;
+}
+
+/* Unified Input Container - User-Friendly Focus Design */
+.llm-unified-input-container {
+  background: var(--background-primary);
+  border: 2px solid var(--interactive-accent);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow:
+    0 2px 8px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.2),
+    0 0 0 1px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  backdrop-filter: blur(8px);
+  animation: inputContainerAppear 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes inputContainerAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.llm-unified-input-container:focus-within {
+  border: 3px solid var(--interactive-accent);
+  box-shadow:
+    0 0 0 4px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.2),
+    0 6px 24px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+  background: var(--background-primary-alt, var(--background-primary));
+  opacity: 1;
+}
+
+/* Function Pills Container - Enhanced Design */
+.llm-function-pills-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.llm-function-pill {
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(4px);
+}
+
+.llm-function-pill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.llm-function-pill:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.llm-function-pill:hover::before {
+  left: 100%;
+}
+
+.llm-function-pill.active {
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 8px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.3);
+}
+
+/* Textarea Container */
+.llm-textarea-container {
+  flex: 1;
+  position: relative;
+}
+
+.llm-unified-prompt-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-interface);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-normal);
+  padding: 8px 0;
+  overflow-y: auto;
+  min-height: 24px;
+  transition: all 0.2s ease;
+}
+
+.llm-unified-prompt-input::placeholder {
+  color: var(--interactive-accent);
+  font-style: normal;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+  font-weight: 500;
+}
+
+.llm-unified-prompt-input:focus::placeholder {
+  opacity: 0.4;
+  color: var(--text-faint);
+}
+
+.llm-unified-prompt-input.drag-over {
+  background: linear-gradient(135deg, var(--background-modifier-hover), var(--background-modifier-form-field));
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Controls Container - Enhanced Design */
+.llm-controls-container {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  position: relative;
+  z-index: 10;
+  /* Ensure enough space for dropdowns */
+  min-height: 50px;
+  overflow: visible;
+}
+
+.llm-template-selector,
+.llm-model-selector {
+  background: var(--background-primary);
+  border: 2px solid var(--interactive-accent);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-normal);
+  cursor: pointer;
+  min-width: 120px;
+  min-height: 44px;
+  transition: all 0.2s ease;
+  position: relative;
+  /* Ensure text is properly centered */
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  /* Keep native appearance for better compatibility */
+}
+
+/* Remove custom arrow - use native dropdown arrow */
+
+.llm-template-selector:hover,
+.llm-model-selector:hover {
+  border-color: var(--interactive-accent-hover);
+  background: var(--background-modifier-hover);
+}
+
+.llm-template-selector:focus,
+.llm-model-selector:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.3);
+}
+
+/* Simplified dropdown options styling */
+.llm-template-selector option,
+.llm-model-selector option {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  min-height: 44px;
+}
+
+.llm-template-selector option:hover,
+.llm-model-selector option:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.llm-template-selector option:checked,
+.llm-model-selector option:checked {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
+/* Keep dropdown styling simple for better compatibility */
+
+.llm-unified-send-button {
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
+  font-size: 14px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.3);
+}
+
+.llm-unified-send-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.llm-unified-send-button:hover {
+  background: linear-gradient(135deg, var(--interactive-accent-hover), var(--interactive-accent));
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 16px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.4);
+}
+
+.llm-unified-send-button:hover::before {
+  left: 100%;
+}
+
+.llm-unified-send-button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.llm-unified-send-button:disabled {
+  background: var(--background-modifier-border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.llm-unified-send-button:disabled::before {
+  display: none;
+}
+
+.llm-unified-send-button svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.2s ease;
+}
+
+.llm-unified-send-button:hover svg {
+  transform: translateX(2px);
 }
 
 .llm-conversation-id-input {
@@ -113,58 +426,124 @@
 .llm-chat-history {
   flex-grow: 1;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: 0.5rem;
-  background-color: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--background-primary);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 16px rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+.llm-chat-history::-webkit-scrollbar {
+  width: 6px;
+}
+
+.llm-chat-history::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.llm-chat-history::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.llm-chat-history::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .llm-chat-message {
-  margin-bottom: 1rem;
+  margin-bottom: 24px;
+  animation: messageSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .llm-chat-content {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  max-width: 85%;
 }
 
-.llm-chat-ai-message .llm-chat-content {
+.llm-chat-assistant-message .llm-chat-content {
   align-items: flex-end;
+  margin-left: auto;
 }
 
 .llm-chat-icon {
-  width: 30px;
-  height: 30px;
-  background-color: #7E6BC4;
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #7E6BC4, #9B8CE8);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 8px rgba(126, 107, 196, 0.3);
+  transition: transform 0.2s ease;
 }
 
-.llm-chat-ai-message .llm-chat-icon {
+.llm-chat-icon:hover {
+  transform: scale(1.05);
+}
+
+.llm-chat-assistant-message .llm-chat-icon {
   margin: 0;
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
 }
 
 .llm-chat-icon svg {
   width: 20px;
   height: 20px;
-  color: white; /* White icon color for contrast */
+  color: white;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
 }
 
 .llm-chat-text {
   width: 100%;
-  padding: 0.5rem;
-  border-radius: 4px;
-  background-color: var(--background-primary);
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: var(--background-primary);
   overflow-wrap: break-word;
   word-wrap: break-word;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  position: relative;
+  backdrop-filter: blur(4px);
+  line-height: 1.6;
+}
+
+.llm-chat-text::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  border-radius: 18px;
+  pointer-events: none;
 }
 
 .llm-chat-text p {
-  margin: 0 0 1em 0;
+  margin: 0 0 12px 0;
+  position: relative;
+  z-index: 1;
 }
 
 .llm-chat-text p:last-child {
@@ -172,21 +551,36 @@
 }
 
 .llm-chat-text pre {
-  background-color: var(--background-secondary);
-  padding: 0.5em;
-  border-radius: 4px;
+  background: var(--background-secondary);
+  padding: 16px;
+  border-radius: 12px;
   overflow-x: auto;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1;
 }
 
 .llm-chat-text code {
-  background-color: var(--background-secondary);
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-size: 0.85em;
+  background: var(--background-modifier-form-field);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  border: 1px solid var(--background-modifier-border);
+  position: relative;
+  z-index: 1;
 }
 
 .llm-chat-user-message .llm-chat-text {
-  background-color: var(--background-modifier-form-field);
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 2px 12px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.2);
+}
+
+.llm-chat-assistant-message .llm-chat-text {
+  background: var(--background-modifier-form-field);
+  border-color: var(--background-modifier-border);
 }
 
 .llm-message-actions {
@@ -278,4 +672,230 @@
 
 .llm-command-option:hover {
     background: var(--background-modifier-hover);
+}
+
+/* Popup Styles */
+.llm-attachments-popup,
+.llm-cid-popup,
+.llm-template-popup {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+  min-width: 200px;
+  z-index: 1000;
+}
+
+.llm-popup-option {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--text-normal);
+  cursor: pointer;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.llm-popup-option:hover {
+  background: var(--background-modifier-hover);
+}
+
+.llm-popup-option:last-child {
+  margin-bottom: 0;
+}
+
+.llm-popup-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.llm-popup-input {
+  width: 100%;
+  background: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-normal);
+  margin-bottom: 8px;
+}
+
+.llm-popup-input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.llm-popup-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.llm-popup-button {
+  flex: 1;
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.llm-popup-button:hover {
+  background: var(--interactive-hover);
+  border-color: var(--interactive-accent);
+}
+
+/* Legacy Hidden Elements */
+.llm-legacy-hidden {
+  display: none !important;
+}
+
+/* Simplified cross-browser support */
+.llm-template-selector,
+.llm-model-selector {
+  /* Keep native appearance for better compatibility */
+  -webkit-appearance: menulist;
+  -moz-appearance: menulist;
+  appearance: menulist;
+}
+
+/* Image Preview Updates - Integrated Design */
+.llm-image-previews {
+  display: none;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background: transparent;
+  border-radius: 8px;
+  border: 1px dashed var(--background-modifier-border);
+  animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.llm-image-preview-wrapper {
+  position: relative;
+  background: var(--background-primary);
+  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.llm-image-preview-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--interactive-accent);
+}
+
+.llm-image-thumbnail {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.llm-image-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: center;
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.llm-image-delete-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff4757, #ff3742);
+  color: white;
+  border: 2px solid var(--background-primary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(255, 71, 87, 0.3);
+}
+
+.llm-image-delete-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 3px 8px rgba(255, 71, 87, 0.4);
+}
+
+.llm-manual-path-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: linear-gradient(135deg, var(--background-modifier-form-field), var(--background-modifier-hover));
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Additional Modern Enhancements */
+.llm-unified-input-container.has-content {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.1);
+}
+
+/* Smooth transitions for all interactive elements */
+* {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Focus ring for accessibility */
+.llm-unified-input-container:focus-within,
+.llm-template-selector:focus,
+.llm-model-selector:focus {
+  outline: none;
+}
+
+/* Enhanced scrollbar for webkit browsers */
+.llm-unified-prompt-input::-webkit-scrollbar {
+  width: 4px;
+}
+
+.llm-unified-prompt-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.llm-unified-prompt-input::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+}
+
+.llm-unified-prompt-input::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }

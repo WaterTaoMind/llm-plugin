@@ -6,6 +6,7 @@ import { CommandService } from '../services/CommandService';
 import { ImageService } from '../services/ImageService';
 import { ChatHistory } from './components/ChatHistory';
 import { InputArea } from './components/InputArea';
+import { joinPath, normalizePath } from '../utils/pathUtils';
 
 export class LLMView extends ItemView {
     private plugin: LLMPlugin;
@@ -55,7 +56,10 @@ export class LLMView extends ItemView {
 
         // Initialize input area
         const inputContainer = chatContainer.createDiv();
-        this.inputArea = new InputArea(inputContainer);
+        // Get plugin directory path (normalize for cross-platform compatibility)
+        const basePath = (this.app.vault.adapter as any).basePath;
+        const pluginDir = joinPath(normalizePath(basePath), '.obsidian', 'plugins', this.plugin.manifest.id);
+        this.inputArea = new InputArea(inputContainer, this.app, pluginDir);
 
         // Setup event handlers
         this.setupEventHandlers();

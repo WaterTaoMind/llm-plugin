@@ -1,5 +1,6 @@
 import { App, Notice } from 'obsidian';
 import { FileWithPath, ImageProcessingResult } from '../core/types';
+import { joinPath, normalizePath, getFilename, pathContainsFolder, hasImageExtension, isAbsolutePath } from '../utils/pathUtils';
 
 const SCREENSHOT_FOLDER = "llm_screenshots";
 
@@ -33,7 +34,7 @@ export class ImageService {
 
     validateImagePath(path: string): ImageProcessingResult {
         const trimmedPath = path.trim();
-        
+
         if (!trimmedPath) {
             return { path: trimmedPath, isDataUrl: false, isValid: false };
         }
@@ -42,7 +43,7 @@ export class ImageService {
             return { path: trimmedPath, isDataUrl: true, isValid: true };
         }
 
-        if (trimmedPath.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i)) {
+        if (hasImageExtension(trimmedPath)) {
             return { path: trimmedPath, isDataUrl: false, isValid: true };
         }
 
@@ -63,20 +64,20 @@ export class ImageService {
             const extension = file.name?.split('.').pop() || 'png';
             const timestamp = Date.now();
             const filename = `screenshot_${timestamp}.${extension}`;
-            const relativePath = `${folderPath}/${filename}`;
-            
+            const relativePath = joinPath(folderPath, filename);
+
             // Save file
             const arrayBuffer = await this.fileToArrayBuffer(file);
             const binary = new Uint8Array(arrayBuffer);
             await this.app.vault.createBinary(relativePath, binary);
-            
+
             // Try to get absolute path
             let absolutePath = relativePath;
             try {
                 // @ts-ignore - Some adapters have getBasePath
                 const basePath = this.app.vault.adapter.getBasePath?.();
                 if (basePath) {
-                    absolutePath = `${basePath}/${relativePath}`;
+                    absolutePath = joinPath(normalizePath(basePath), relativePath);
                 }
             } catch (error) {
                 console.warn('Could not get absolute path, using relative path instead:', error);
@@ -93,16 +94,16 @@ export class ImageService {
     async cleanupScreenshots(paths: string[]): Promise<void> {
         for (const path of paths) {
             try {
-                if (path.startsWith('/') || /^[A-Za-z]:/.test(path)) {
+                if (isAbsolutePath(path)) {
                     // Extract filename from absolute path
-                    const filename = path.split('/').pop();
+                    const filename = getFilename(path);
                     if (filename) {
-                        const relativePath = `${SCREENSHOT_FOLDER}/${filename}`;
+                        const relativePath = joinPath(SCREENSHOT_FOLDER, filename);
                         if (await this.app.vault.adapter.exists(relativePath)) {
                             await this.app.vault.adapter.remove(relativePath);
                         }
                     }
-                } else if (path.startsWith(SCREENSHOT_FOLDER) && 
+                } else if (path.startsWith(SCREENSHOT_FOLDER) &&
                           await this.app.vault.adapter.exists(path)) {
                     await this.app.vault.adapter.remove(path);
                 }
@@ -114,10 +115,9 @@ export class ImageService {
 
     getScreenshotPaths(images: string[]): string[] {
         return images.filter(path => {
-            const isAbsolutePath = path.includes(`/${SCREENSHOT_FOLDER}/`) || 
-                                 path.includes(`\\${SCREENSHOT_FOLDER}\\`);
+            const containsScreenshotFolder = pathContainsFolder(path, SCREENSHOT_FOLDER);
             const isRelativePath = path.startsWith(SCREENSHOT_FOLDER);
-            return isAbsolutePath || isRelativePath;
+            return containsScreenshotFolder || isRelativePath;
         });
     }
 
