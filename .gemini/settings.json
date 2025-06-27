@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "youtube-transcript": {
+      "command": "/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/python",
+      "args": ["/Users/zhonghaoning1/Work/tools/youtube_transcript_mcp_server.py"],
+      "env": {
+        "TRANSCRIPT_OUTPUT_DIR": "/Users/zhonghaoning1/Work/tools/transcripts",
+        "LOG_LEVEL": "INFO"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/zhonghaoning1/Work/tools"
+      ]
+    },
+    "commands": {
+      "command": "npx",
+      "args": [
+        "mcp-server-commands"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    }
+  }
+}
