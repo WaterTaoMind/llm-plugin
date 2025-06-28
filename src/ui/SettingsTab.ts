@@ -118,6 +118,16 @@ export class LLMSettingTab extends PluginSettingTab {
                     this.display(); // Refresh to show/hide MCP settings
                 }));
 
+        new Setting(containerEl)
+            .setName('Agentic Mode')
+            .setDesc('Enable agentic processing for complex requests using ReAct (Reasoning + Acting) system with Simon Wilson\'s LLM and Pocket Flow')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.agenticMode)
+                .onChange(async (value) => {
+                    this.plugin.settings.agenticMode = value;
+                    await this.plugin.saveSettings();
+                }));
+
         if (this.plugin.settings.mcpEnabled) {
             new Setting(containerEl)
                 .setName('Auto Connect')

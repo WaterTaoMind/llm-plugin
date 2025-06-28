@@ -1,57 +1,37 @@
 import { LLMRequest, LLMResponse, LLMPluginSettings, MCPToolCall, MCPToolResult } from '../core/types';
 import { MCPClientService } from './MCPClientService';
+import { AgenticLLMService } from './AgenticLLMService';
 
 export class LLMService {
     private mcpClientService?: MCPClientService;
+    private agenticService: AgenticLLMService;
 
-    constructor(private settings: LLMPluginSettings) {}
+    constructor(private settings: LLMPluginSettings) {
+        this.agenticService = new AgenticLLMService(settings);
+    }
 
     /**
      * Set MCP client service for tool integration
      */
     setMCPClientService(mcpClientService: MCPClientService): void {
         this.mcpClientService = mcpClientService;
+        this.agenticService.setMCPClientService(mcpClientService);
     }
 
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {
         try {
-            // Get available MCP tools if MCP is enabled
-            const tools = this.mcpClientService?.getToolsForLLM() || [];
+            // Check if agentic system should be used
+            const useAgentic = await this.shouldUseAgenticSystem(request);
 
-            const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-API-Key': this.settings.llmConnectorApiKey
-                },
-                body: JSON.stringify({
-                    prompt: request.prompt,
-                    template: request.template,
-                    model: request.model,
-                    options: request.options,
-                    json_mode: false,
-                    images: request.images,
-                    tools: tools.length > 0 ? tools : undefined, // Include tools if available
-                    tool_choice: tools.length > 0 ? "auto" : undefined // Let LLM decide
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+            if (useAgentic) {
+                console.log('🤖 Using agentic system for request');
+                return await this.agenticService.sendRequest(request);
             }
 
-            const responseData = await response.json();
+            // Fallback to traditional LLM API
+            console.log('🔗 Using traditional LLM API');
+            return await this.sendTraditionalRequest(request);
 
-            // Check if LLM wants to call tools
-            if (responseData.tool_calls && this.mcpClientService) {
-                return await this.processToolCallsAndRespond(responseData, request);
-            }
-
-            return {
-                result: responseData.result,
-                conversationId: responseData.conversation_id
-            };
         } catch (error) {
             console.error('Failed to send LLM request:', error);
             return {
@@ -59,6 +39,82 @@ export class LLMService {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
         }
+    }
+
+    /**
+     * Send traditional LLM API request
+     */
+    private async sendTraditionalRequest(request: LLMRequest): Promise<LLMResponse> {
+        // Get available MCP tools if MCP is enabled
+        const tools = this.mcpClientService?.getToolsForLLM() || [];
+
+        const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-API-Key': this.settings.llmConnectorApiKey
+            },
+            body: JSON.stringify({
+                prompt: request.prompt,
+                template: request.template,
+                model: request.model,
+                options: request.options,
+                json_mode: false,
+                images: request.images,
+                tools: tools.length > 0 ? tools : undefined, // Include tools if available
+                tool_choice: tools.length > 0 ? "auto" : undefined // Let LLM decide
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const responseData = await response.json();
+
+        // Check if LLM wants to call tools
+        if (responseData.tool_calls && this.mcpClientService) {
+            return await this.processToolCallsAndRespond(responseData, request);
+        }
+
+        return {
+            result: responseData.result,
+            conversationId: responseData.conversation_id
+        };
+    }
+
+    /**
+     * Determine if agentic system should be used
+     */
+    private async shouldUseAgenticSystem(request: LLMRequest): Promise<boolean> {
+        // Check if agentic system is available
+        const isAvailable = await this.agenticService.isAgentAvailable();
+        if (!isAvailable) {
+            return false;
+        }
+
+        // Check user preference (could be a setting)
+        if (this.settings.agenticMode === false) {
+            return false;
+        }
+
+        // Check if request complexity warrants agentic processing
+        return this.isComplexRequest(request.prompt);
+    }
+
+    /**
+     * Determine if request is complex enough for agentic processing
+     */
+    private isComplexRequest(prompt: string): boolean {
+        const complexKeywords = [
+            'analyze', 'research', 'investigate', 'find information',
+            'summarize video', 'youtube', 'extract data', 'process file',
+            'help me with', 'can you help', 'step by step', 'multiple steps'
+        ];
+
+        const lowerPrompt = prompt.toLowerCase();
+        return complexKeywords.some(keyword => lowerPrompt.includes(keyword));
     }
 
     /**

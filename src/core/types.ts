@@ -29,6 +29,7 @@ export interface LLMPluginSettings {
     mcpAutoConnect: boolean;
     mcpToolTimeout: number;
     mcpShowToolExecution: boolean;
+    agenticMode: boolean;
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
@@ -47,7 +48,8 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     mcpEnabled: true,
     mcpAutoConnect: true,
     mcpToolTimeout: 30000, // 30 seconds
-    mcpShowToolExecution: true
+    mcpShowToolExecution: true,
+    agenticMode: true
 };
 
 export interface FileWithPath extends File {
