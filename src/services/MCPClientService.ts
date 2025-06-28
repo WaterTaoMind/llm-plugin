@@ -444,7 +444,7 @@ export class MCPClientService {
             const vaultPath = (adapter as any).basePath || '';
             if (vaultPath) {
                 // Construct plugin data path: vault/.obsidian/plugins/plugin-id/
-                return `${vaultPath}/.obsidian/plugins/llm-plugin`;
+                return `${vaultPath}/.obsidian/plugins/unofficial-llm-integration`;
             }
         }
         return '';
