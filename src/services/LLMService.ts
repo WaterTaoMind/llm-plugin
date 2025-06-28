@@ -1,10 +1,23 @@
-import { LLMRequest, LLMResponse, LLMPluginSettings } from '../core/types';
+import { LLMRequest, LLMResponse, LLMPluginSettings, MCPToolCall, MCPToolResult } from '../core/types';
+import { MCPClientService } from './MCPClientService';
 
 export class LLMService {
+    private mcpClientService?: MCPClientService;
+
     constructor(private settings: LLMPluginSettings) {}
+
+    /**
+     * Set MCP client service for tool integration
+     */
+    setMCPClientService(mcpClientService: MCPClientService): void {
+        this.mcpClientService = mcpClientService;
+    }
 
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {
         try {
+            // Get available MCP tools if MCP is enabled
+            const tools = this.mcpClientService?.getToolsForLLM() || [];
+
             const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
                 method: 'POST',
                 headers: {
@@ -18,7 +31,97 @@ export class LLMService {
                     model: request.model,
                     options: request.options,
                     json_mode: false,
-                    images: request.images
+                    images: request.images,
+                    tools: tools.length > 0 ? tools : undefined, // Include tools if available
+                    tool_choice: tools.length > 0 ? "auto" : undefined // Let LLM decide
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const responseData = await response.json();
+
+            // Check if LLM wants to call tools
+            if (responseData.tool_calls && this.mcpClientService) {
+                return await this.processToolCallsAndRespond(responseData, request);
+            }
+
+            return {
+                result: responseData.result,
+                conversationId: responseData.conversation_id
+            };
+        } catch (error) {
+            console.error('Failed to send LLM request:', error);
+            return {
+                result: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    /**
+     * Process tool calls from LLM and send results back for final response
+     */
+    private async processToolCallsAndRespond(responseData: any, originalRequest: LLMRequest): Promise<LLMResponse> {
+        if (!this.mcpClientService) {
+            throw new Error('MCP client service not available');
+        }
+
+        try {
+            // Convert response tool calls to our format
+            const toolCalls: MCPToolCall[] = responseData.tool_calls.map((call: any, index: number) => ({
+                id: call.id || `tool_call_${index}`,
+                toolName: call.function?.name || call.name,
+                serverId: this.findServerForTool(call.function?.name || call.name),
+                arguments: call.function?.arguments || call.arguments || {}
+            }));
+
+            // Execute tool calls
+            const toolResults = await this.mcpClientService.executeToolCalls(toolCalls);
+
+            // Send tool results back to LLM for final response
+            return await this.sendToolResults(toolResults, originalRequest, responseData);
+        } catch (error) {
+            console.error('Failed to process tool calls:', error);
+            return {
+                result: responseData.result || 'Tool execution failed',
+                error: error instanceof Error ? error.message : 'Tool execution error'
+            };
+        }
+    }
+
+    /**
+     * Send tool results back to LLM for final response
+     */
+    private async sendToolResults(toolResults: MCPToolResult[], originalRequest: LLMRequest, previousResponse: any): Promise<LLMResponse> {
+        try {
+            // Format tool results for LLM
+            const toolResultsText = toolResults.map(result => {
+                if (result.success) {
+                    return `Tool ${result.toolCallId} result: ${typeof result.content === 'string' ? result.content : JSON.stringify(result.content)}`;
+                } else {
+                    return `Tool ${result.toolCallId} failed: ${result.error}`;
+                }
+            }).join('\n\n');
+
+            // Send follow-up request with tool results
+            const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-API-Key': this.settings.llmConnectorApiKey
+                },
+                body: JSON.stringify({
+                    prompt: `${originalRequest.prompt}\n\nTool Results:\n${toolResultsText}\n\nPlease provide a final response incorporating these tool results.`,
+                    template: originalRequest.template,
+                    model: originalRequest.model,
+                    options: originalRequest.options,
+                    json_mode: false,
+                    images: originalRequest.images,
+                    conversation_id: previousResponse.conversation_id
                 })
             });
 
@@ -32,12 +135,22 @@ export class LLMService {
                 conversationId: responseData.conversation_id
             };
         } catch (error) {
-            console.error('Failed to send LLM request:', error);
+            console.error('Failed to send tool results:', error);
             return {
-                result: '',
+                result: 'Failed to process tool results',
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
         }
+    }
+
+    /**
+     * Find server ID for a tool name
+     */
+    private findServerForTool(toolName: string): string {
+        if (!this.mcpClientService) return '';
+
+        const tool = this.mcpClientService.getTool(toolName);
+        return tool?.serverId || '';
     }
 
     async getYouTubeTranscript(url: string): Promise<string> {

@@ -1,7 +1,8 @@
 import { Notice, App } from 'obsidian';
-import { Command } from '../../core/types';
+import { Command, MCPServerConnection } from '../../core/types';
 import { SendIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
 import { joinPath, normalizePath, hasImageExtension } from '../../utils/pathUtils';
+import { MCPClientService } from '../../services/MCPClientService';
 
 interface ConfigData {
     models: Array<{id: string, label: string}>;
@@ -22,12 +23,14 @@ export class InputArea {
     private attachmentsPill: HTMLButtonElement;
     private cidPill: HTMLButtonElement;
     private templatePill: HTMLButtonElement;
+    private mcpStatusPill: HTMLButtonElement;
 
     // Popups and dropdowns
     private dropdown: HTMLElement | null = null;
     private cidPopup: HTMLElement | null = null;
     private attachmentsPopup: HTMLElement | null = null;
     private templatePopup: HTMLElement | null = null;
+    private mcpStatusPopup: HTMLElement | null = null;
 
     // Data
     private commands: Command[] = [];
@@ -48,6 +51,9 @@ export class InputArea {
     public onSendMessage: () => void = () => {};
     public onGetConversationId: () => void = () => {};
     public onClearConversationId: () => void = () => {};
+
+    // MCP integration
+    private mcpClientService?: MCPClientService;
 
     constructor(container: HTMLElement, app: App, pluginDir: string) {
         this.container = container;
@@ -210,9 +216,17 @@ export class InputArea {
             text: '模板'
         });
 
+        // MCP Status pill (fifth - MCP server status)
+        this.mcpStatusPill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill mcp-status-pill',
+            text: 'MCP: 0/0'
+        });
+        this.mcpStatusPill.style.display = 'none'; // Hidden by default
+
         // Add visual indicators
         this.updateCidPillState();
         this.updateTemplatePillState();
+        this.updateMCPStatusPill();
     }
 
     private createMainTextArea() {
@@ -939,6 +953,42 @@ export class InputArea {
         this.updateCidPillState();
         if (this.conversationIdInput) {
             this.conversationIdInput.value = '';
+        }
+    }
+
+    /**
+     * Set MCP client service for status monitoring
+     */
+    setMCPClientService(mcpClientService: MCPClientService): void {
+        this.mcpClientService = mcpClientService;
+        this.updateMCPStatusPill();
+    }
+
+    /**
+     * Update MCP status pill
+     */
+    private updateMCPStatusPill(): void {
+        if (!this.mcpStatusPill) return;
+
+        if (!this.mcpClientService) {
+            this.mcpStatusPill.style.display = 'none';
+            return;
+        }
+
+        const stats = this.mcpClientService.getStats();
+        const isConnected = stats.connectedServers > 0;
+
+        this.mcpStatusPill.style.display = 'flex';
+        this.mcpStatusPill.textContent = `MCP: ${stats.connectedServers}/${stats.totalServers}`;
+
+        if (isConnected) {
+            this.mcpStatusPill.classList.remove('mcp-disconnected');
+            this.mcpStatusPill.classList.add('mcp-connected');
+            this.mcpStatusPill.title = `${stats.connectedServers} MCP servers connected, ${stats.totalTools} tools available`;
+        } else {
+            this.mcpStatusPill.classList.remove('mcp-connected');
+            this.mcpStatusPill.classList.add('mcp-disconnected');
+            this.mcpStatusPill.title = 'No MCP servers connected';
         }
     }
 }

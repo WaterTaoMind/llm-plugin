@@ -1,0 +1,156 @@
+{
+  "examples": [
+    {
+      "name": "Filesystem Server",
+      "description": "Access local files and directories",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/directory"],
+      "capabilities": ["tools", "resources"],
+      "tools": ["read_file", "write_file", "create_directory", "list_directory"],
+      "setup": "npm install -g @modelcontextprotocol/server-filesystem"
+    },
+    {
+      "name": "Git Server",
+      "description": "Git repository operations",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git", "--repository", "/path/to/git/repo"],
+      "capabilities": ["tools"],
+      "tools": ["git_log", "git_diff", "git_show", "git_blame"],
+      "setup": "npm install -g @modelcontextprotocol/server-git"
+    },
+    {
+      "name": "SQLite Server",
+      "description": "SQLite database operations",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/path/to/database.db"],
+      "capabilities": ["tools"],
+      "tools": ["query", "execute", "list_tables", "describe_table"],
+      "setup": "npm install -g @modelcontextprotocol/server-sqlite"
+    },
+    {
+      "name": "Web Search Server",
+      "description": "Web search capabilities",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "capabilities": ["tools"],
+      "tools": ["brave_web_search"],
+      "setup": "npm install -g @modelcontextprotocol/server-brave-search",
+      "env": {
+        "BRAVE_API_KEY": "your-brave-api-key"
+      }
+    },
+    {
+      "name": "GitHub Server",
+      "description": "GitHub repository operations",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "capabilities": ["tools"],
+      "tools": ["create_issue", "list_issues", "get_issue", "create_pull_request"],
+      "setup": "npm install -g @modelcontextprotocol/server-github",
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token"
+      }
+    },
+    {
+      "name": "Postgres Server",
+      "description": "PostgreSQL database operations",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "capabilities": ["tools"],
+      "tools": ["query", "execute", "list_tables", "describe_table"],
+      "setup": "npm install -g @modelcontextprotocol/server-postgres",
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "postgresql://user:password@localhost:5432/dbname"
+      }
+    },
+    {
+      "name": "Puppeteer Server",
+      "description": "Web scraping and automation",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+      "capabilities": ["tools"],
+      "tools": ["puppeteer_screenshot", "puppeteer_click", "puppeteer_type", "puppeteer_extract"],
+      "setup": "npm install -g @modelcontextprotocol/server-puppeteer"
+    },
+    {
+      "name": "Memory Server",
+      "description": "Persistent memory for conversations",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "capabilities": ["tools"],
+      "tools": ["create_memory", "search_memories", "update_memory", "delete_memory"],
+      "setup": "npm install -g @modelcontextprotocol/server-memory"
+    }
+  ],
+  "custom_examples": [
+    {
+      "name": "Simple Echo Server",
+      "description": "Basic echo server for testing",
+      "command": "node",
+      "args": ["echo-server.js"],
+      "capabilities": ["tools"],
+      "tools": ["echo"],
+      "note": "Create echo-server.js using the example in test-mcp-integration.md"
+    },
+    {
+      "name": "Calculator Server",
+      "description": "Mathematical calculations",
+      "command": "python",
+      "args": ["calculator-server.py"],
+      "capabilities": ["tools"],
+      "tools": ["calculate", "solve_equation"],
+      "note": "Custom Python server for mathematical operations"
+    }
+  ],
+  "configuration_tips": [
+    {
+      "tip": "Use absolute paths for commands and arguments",
+      "example": "Instead of 'node server.js', use '/usr/bin/node /full/path/to/server.js'"
+    },
+    {
+      "tip": "Set environment variables for API keys",
+      "example": "Add GITHUB_TOKEN to the env field for GitHub server"
+    },
+    {
+      "tip": "Test servers independently first",
+      "example": "Run the server manually to ensure it works before adding to plugin"
+    },
+    {
+      "tip": "Enable auto-reconnect for stable servers",
+      "example": "Local filesystem servers should have auto-reconnect enabled"
+    },
+    {
+      "tip": "Use descriptive names for servers",
+      "example": "Instead of 'Server 1', use 'Project Files' or 'Main Database'"
+    }
+  ],
+  "troubleshooting": [
+    {
+      "issue": "Server won't start",
+      "solutions": [
+        "Check if the command exists and is executable",
+        "Verify all required dependencies are installed",
+        "Check file permissions",
+        "Look at console logs for error details"
+      ]
+    },
+    {
+      "issue": "Tools not discovered",
+      "solutions": [
+        "Ensure server implements tools/list endpoint",
+        "Check server logs for errors",
+        "Verify server is actually connected",
+        "Try reconnecting the server"
+      ]
+    },
+    {
+      "issue": "Tool execution fails",
+      "solutions": [
+        "Check tool arguments format",
+        "Verify required permissions",
+        "Look for timeout issues",
+        "Check server-specific requirements"
+      ]
+    }
+  ]
+}

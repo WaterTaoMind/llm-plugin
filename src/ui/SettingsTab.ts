@@ -1,5 +1,6 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
+import { MCPServerConfig } from '../core/types';
 
 export class LLMSettingTab extends PluginSettingTab {
     plugin: LLMPlugin;
@@ -102,5 +103,225 @@ export class LLMSettingTab extends PluginSettingTab {
                     this.plugin.settings.debug = value;
                     await this.plugin.saveSettings();
                 }));
+
+        // MCP Settings Section
+        containerEl.createEl('h3', {text: 'Model Context Protocol (MCP) Settings'});
+
+        new Setting(containerEl)
+            .setName('Enable MCP')
+            .setDesc('Enable Model Context Protocol client functionality')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.mcpEnabled)
+                .onChange(async (value) => {
+                    this.plugin.settings.mcpEnabled = value;
+                    await this.plugin.saveSettings();
+                    this.display(); // Refresh to show/hide MCP settings
+                }));
+
+        if (this.plugin.settings.mcpEnabled) {
+            new Setting(containerEl)
+                .setName('Auto Connect')
+                .setDesc('Automatically connect to MCP servers on startup')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.mcpAutoConnect)
+                    .onChange(async (value) => {
+                        this.plugin.settings.mcpAutoConnect = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Tool Timeout (ms)')
+                .setDesc('Timeout for MCP tool execution in milliseconds')
+                .addText(text => text
+                    .setPlaceholder('30000')
+                    .setValue(String(this.plugin.settings.mcpToolTimeout))
+                    .onChange(async (value) => {
+                        const timeout = parseInt(value) || 30000;
+                        this.plugin.settings.mcpToolTimeout = timeout;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(containerEl)
+                .setName('Show Tool Execution')
+                .setDesc('Show notifications when MCP tools are being executed')
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.mcpShowToolExecution)
+                    .onChange(async (value) => {
+                        this.plugin.settings.mcpShowToolExecution = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            // MCP Servers Section
+            this.displayMCPServers(containerEl);
+        }
+    }
+
+    private displayMCPServers(containerEl: HTMLElement): void {
+        containerEl.createEl('h4', {text: 'MCP Servers'});
+
+        // Server list
+        const serverListContainer = containerEl.createDiv({cls: 'mcp-server-list'});
+        this.refreshServerList(serverListContainer);
+
+        // Add server button
+        new Setting(containerEl)
+            .setName('Add MCP Server')
+            .setDesc('Add a new MCP server configuration')
+            .addButton(button => button
+                .setButtonText('Add Server')
+                .onClick(() => {
+                    this.addNewServer();
+                }));
+    }
+
+    private refreshServerList(container: HTMLElement): void {
+        container.empty();
+
+        this.plugin.settings.mcpServers.forEach((server, index) => {
+            const serverContainer = container.createDiv({cls: 'mcp-server-item'});
+
+            // Server header with real-time status
+            const headerEl = serverContainer.createDiv({cls: 'mcp-server-header'});
+            headerEl.createEl('strong', {text: server.name || `Server ${index + 1}`});
+
+            // Get real-time connection status
+            const mcpClient = this.plugin.getMCPClientService();
+            const connection = mcpClient?.getServerConnections().find(conn => conn.id === server.id);
+
+            if (server.enabled) {
+                if (connection) {
+                    switch (connection.status) {
+                        case 'connected':
+                            headerEl.createEl('span', {text: ' (Connected)', cls: 'mcp-server-status-connected'});
+                            break;
+                        case 'connecting':
+                            headerEl.createEl('span', {text: ' (Connecting...)', cls: 'mcp-server-status-connecting'});
+                            break;
+                        case 'error':
+                            headerEl.createEl('span', {text: ` (Error: ${connection.error})`, cls: 'mcp-server-status-error'});
+                            break;
+                        default:
+                            headerEl.createEl('span', {text: ' (Disconnected)', cls: 'mcp-server-status-disconnected'});
+                    }
+                } else {
+                    headerEl.createEl('span', {text: ' (Enabled)', cls: 'mcp-server-status-enabled'});
+                }
+            } else {
+                headerEl.createEl('span', {text: ' (Disabled)', cls: 'mcp-server-status-disabled'});
+            }
+
+            // Show tools count if connected
+            if (connection && connection.status === 'connected' && connection.tools.length > 0) {
+                headerEl.createEl('span', {text: ` - ${connection.tools.length} tools`, cls: 'mcp-tools-count'});
+            }
+
+            // Server settings
+            new Setting(serverContainer)
+                .setName('Server Name')
+                .addText(text => text
+                    .setValue(server.name)
+                    .onChange(async (value) => {
+                        server.name = value;
+                        await this.plugin.saveSettings();
+                        this.refreshServerList(container);
+                    }));
+
+            new Setting(serverContainer)
+                .setName('Command')
+                .addText(text => text
+                    .setValue(server.command)
+                    .onChange(async (value) => {
+                        server.command = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(serverContainer)
+                .setName('Arguments')
+                .setDesc('Space-separated command arguments')
+                .addText(text => text
+                    .setValue(server.args.join(' '))
+                    .onChange(async (value) => {
+                        server.args = value.split(' ').filter(arg => arg.trim());
+                        await this.plugin.saveSettings();
+                    }));
+
+            new Setting(serverContainer)
+                .setName('Enabled')
+                .addToggle(toggle => toggle
+                    .setValue(server.enabled)
+                    .onChange(async (value) => {
+                        server.enabled = value;
+                        await this.plugin.saveSettings();
+                        this.refreshServerList(container);
+                    }));
+
+            new Setting(serverContainer)
+                .setName('Auto Reconnect')
+                .addToggle(toggle => toggle
+                    .setValue(server.autoReconnect)
+                    .onChange(async (value) => {
+                        server.autoReconnect = value;
+                        await this.plugin.saveSettings();
+                    }));
+
+            // Action buttons
+            const actionsContainer = serverContainer.createDiv({cls: 'mcp-server-actions'});
+
+            // Reconnect button (only show if server is enabled)
+            if (server.enabled) {
+                const reconnectBtn = actionsContainer.createEl('button', {
+                    text: 'Reconnect',
+                    cls: 'mod-cta'
+                });
+                reconnectBtn.onclick = async () => {
+                    try {
+                        reconnectBtn.disabled = true;
+                        reconnectBtn.textContent = 'Reconnecting...';
+
+                        const mcpClient = this.plugin.getMCPClientService();
+                        if (mcpClient) {
+                            await mcpClient.reconnectToServer(server.id);
+                            this.refreshServerList(container);
+                        }
+                    } catch (error) {
+                        new Notice(`Failed to reconnect: ${error}`, 5000);
+                    } finally {
+                        reconnectBtn.disabled = false;
+                        reconnectBtn.textContent = 'Reconnect';
+                    }
+                };
+            }
+
+            // Remove server button
+            const removeBtn = actionsContainer.createEl('button', {
+                text: 'Remove Server',
+                cls: 'mod-warning'
+            });
+            removeBtn.onclick = async () => {
+                this.plugin.settings.mcpServers.splice(index, 1);
+                await this.plugin.saveSettings();
+                this.refreshServerList(container);
+                new Notice('MCP server removed');
+            };
+
+            serverContainer.createEl('hr');
+        });
+    }
+
+    private addNewServer(): void {
+        const newServer: MCPServerConfig = {
+            id: `server_${Date.now()}`,
+            name: 'New MCP Server',
+            command: '',
+            args: [],
+            enabled: false,
+            autoReconnect: true,
+            description: ''
+        };
+
+        this.plugin.settings.mcpServers.push(newServer);
+        this.plugin.saveSettings();
+        this.display(); // Refresh the entire settings display
+        new Notice('New MCP server added. Configure the command and enable it.');
     }
 }

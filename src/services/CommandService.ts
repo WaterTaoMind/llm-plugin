@@ -1,15 +1,24 @@
 import { App, Notice } from 'obsidian';
 import { Command } from '../core/types';
 import { LLMService } from './LLMService';
+import { MCPClientService } from './MCPClientService';
 
 export class CommandService {
     private commands: Map<string, Command> = new Map();
+    private mcpClientService?: MCPClientService;
 
     constructor(
         private app: App,
         private llmService: LLMService
     ) {
         this.initializeCommands();
+    }
+
+    /**
+     * Set MCP client service for tool integration
+     */
+    setMCPClientService(mcpClientService: MCPClientService): void {
+        this.mcpClientService = mcpClientService;
     }
 
     private initializeCommands() {
@@ -38,6 +47,11 @@ export class CommandService {
                 name: '@clipboard',
                 description: 'Read from clipboard',
                 handler: this.handleClipboardCommand.bind(this)
+            },
+            {
+                name: '@resource',
+                description: 'Read MCP resource content',
+                handler: this.handleResourceCommand.bind(this)
             }
         ];
 
@@ -49,23 +63,141 @@ export class CommandService {
     }
 
     async executeCommand(input: string): Promise<string | null> {
-        // Parse command and arguments
-        const match = input.match(/^(@\w+)\s*(.*)$/);
+        // Parse command and arguments - support both @command and @server:tool syntax
+        const match = input.match(/^(@\w+(?::\w+)?)\s*(.*)$/);
         if (!match) return null;
 
         const [, commandName, args] = match;
-        const command = this.commands.get(commandName);
-        
-        if (!command) return null;
 
-        try {
-            await command.handler(args.trim());
-            return commandName; // Return command name to indicate it was handled
-        } catch (error) {
-            console.error(`Failed to execute command ${commandName}:`, error);
-            new Notice(`Failed to execute ${commandName} command`);
+        // Check built-in commands first
+        const command = this.commands.get(commandName);
+        if (command) {
+            try {
+                await command.handler(args.trim());
+                return commandName; // Return command name to indicate it was handled
+            } catch (error) {
+                console.error(`Failed to execute command ${commandName}:`, error);
+                new Notice(`Failed to execute ${commandName} command`);
+                return null;
+            }
+        }
+
+        // Check MCP tools if no built-in command found
+        if (this.mcpClientService) {
+            return await this.executeMCPCommand(commandName, args.trim());
+        }
+
+        return null;
+    }
+
+    /**
+     * Execute MCP tool command
+     */
+    private async executeMCPCommand(commandName: string, args: string): Promise<string | null> {
+        if (!this.mcpClientService) return null;
+
+        const toolName = commandName.substring(1); // Remove @ prefix
+
+        // Handle server:tool syntax
+        let serverId = '';
+        let actualToolName = toolName;
+
+        if (toolName.includes(':')) {
+            [serverId, actualToolName] = toolName.split(':');
+        }
+
+        // Check if tool exists
+        const tool = this.mcpClientService.getTool(serverId ? `${serverId}:${actualToolName}` : actualToolName);
+        if (!tool) {
+            // Provide suggestions
+            const similar = this.mcpClientService.getSimilarTools(actualToolName);
+            if (similar.length > 0) {
+                new Notice(`Tool '${actualToolName}' not found. Did you mean: ${similar.slice(0, 3).join(', ')}?`, 5000);
+            } else {
+                new Notice(`MCP tool '${actualToolName}' not found`, 3000);
+            }
             return null;
         }
+
+        // Check for conflicts
+        if (this.mcpClientService.isToolConflicted(actualToolName) && !serverId) {
+            const resolutions = this.mcpClientService.getConflictResolution(actualToolName);
+            new Notice(`Tool name '${actualToolName}' is ambiguous. Use: ${resolutions.join(' or ')}`, 5000);
+            return null;
+        }
+
+        try {
+            // Parse arguments (simple space-separated for now)
+            const parsedArgs = this.parseToolArguments(args, tool.inputSchema);
+
+            // Execute tool
+            const toolCall = {
+                id: `manual_${Date.now()}`,
+                toolName: actualToolName,
+                serverId: tool.serverId,
+                arguments: parsedArgs
+            };
+
+            const results = await this.mcpClientService.executeToolCalls([toolCall]);
+            const result = results[0];
+
+            if (result.success) {
+                new Notice(`Tool '${actualToolName}' executed successfully`, 2000);
+                // You could display the result in chat or return it
+                console.log('MCP Tool Result:', result.content);
+                return commandName;
+            } else {
+                new Notice(`Tool '${actualToolName}' failed: ${result.error}`, 5000);
+                return null;
+            }
+        } catch (error) {
+            console.error(`Failed to execute MCP tool ${actualToolName}:`, error);
+            new Notice(`Failed to execute MCP tool: ${error}`, 5000);
+            return null;
+        }
+    }
+
+    /**
+     * Parse tool arguments based on schema (simplified)
+     */
+    private parseToolArguments(args: string, schema: any): Record<string, any> {
+        if (!args.trim()) return {};
+
+        // Simple parsing - split by spaces and try to match to schema properties
+        const parts = args.split(' ');
+        const result: Record<string, any> = {};
+
+        if (schema && schema.properties) {
+            const properties = Object.keys(schema.properties);
+
+            // Map positional arguments to schema properties
+            parts.forEach((part, index) => {
+                if (index < properties.length) {
+                    const propName = properties[index];
+                    const propType = schema.properties[propName]?.type;
+
+                    // Basic type conversion
+                    if (propType === 'number') {
+                        result[propName] = parseFloat(part) || 0;
+                    } else if (propType === 'boolean') {
+                        result[propName] = part.toLowerCase() === 'true';
+                    } else {
+                        result[propName] = part;
+                    }
+                }
+            });
+
+            // If only one argument and one property, use it directly
+            if (parts.length === 1 && properties.length === 1) {
+                const propName = properties[0];
+                result[propName] = args.trim();
+            }
+        } else {
+            // Fallback: use the entire args as a single parameter
+            result.input = args.trim();
+        }
+
+        return result;
     }
 
     // Replace inline @-commands in text
@@ -91,6 +223,23 @@ export class CommandService {
             } else {
                 new Notice('No text found in clipboard for @clipboard');
                 throw new Error('No clipboard content found');
+            }
+        }
+
+        // Replace @resource:uri patterns
+        if (this.mcpClientService && /@resource:/i.test(processedText)) {
+            const resourceMatches = processedText.match(/@resource:([^\s]+)/gi);
+            if (resourceMatches) {
+                for (const match of resourceMatches) {
+                    const uri = match.substring(10); // Remove '@resource:' prefix
+                    try {
+                        const resourceContent = await this.mcpClientService.readResource(uri);
+                        processedText = processedText.replace(match, resourceContent);
+                    } catch (error) {
+                        new Notice(`Failed to read resource ${uri}: ${error}`, 5000);
+                        throw new Error(`Failed to read resource ${uri}`);
+                    }
+                }
             }
         }
 
@@ -149,6 +298,36 @@ export class CommandService {
         } catch (error) {
             console.error('Failed to read clipboard:', error);
             return null;
+        }
+    }
+
+    private async handleResourceCommand(args: string): Promise<void> {
+        if (!this.mcpClientService) {
+            throw new Error('MCP client service not available');
+        }
+
+        const uri = args.trim();
+        if (!uri) {
+            // List available resources
+            const resources = await this.mcpClientService.getAvailableResources();
+            if (resources.length === 0) {
+                new Notice('No MCP resources available', 3000);
+                return;
+            }
+
+            const resourceList = resources.map(r => `${r.uri} (${r.serverName})`).join('\n');
+            new Notice(`Available resources:\n${resourceList}`, 10000);
+            return;
+        }
+
+        try {
+            const content = await this.mcpClientService.readResource(uri);
+            new Notice(`Resource content loaded: ${uri}`, 2000);
+            console.log('Resource content:', content);
+            // The content could be used in the LLM context
+        } catch (error) {
+            console.error(`Failed to read resource ${uri}:`, error);
+            new Notice(`Failed to read resource: ${error}`, 5000);
         }
     }
 }

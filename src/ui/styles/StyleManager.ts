@@ -6,6 +6,7 @@ export class StyleManager {
         this.addImagePreviewStyles();
         this.addImageInputStyles();
         this.addChatStyles();
+        this.addMCPStyles();
     }
 
     removeStyles() {
@@ -405,6 +406,141 @@ export class StyleManager {
                 background: var(--background-primary-alt);
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 4px;
+            }
+        `);
+        this.styleElements.push(styleEl);
+    }
+
+    private addMCPStyles() {
+        const styleEl = this.createStyleElement('llm-mcp-styles', `
+            .mcp-server-list {
+                margin: 1em 0;
+            }
+
+            .mcp-server-item {
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                padding: 1em;
+                margin: 0.5em 0;
+                background: var(--background-secondary);
+            }
+
+            .mcp-server-header {
+                margin-bottom: 1em;
+                padding-bottom: 0.5em;
+                border-bottom: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-status-enabled {
+                color: var(--text-success);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-disabled {
+                color: var(--text-muted);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-connected {
+                color: var(--color-green);
+                font-size: 0.9em;
+                font-weight: bold;
+            }
+
+            .mcp-server-status-connecting {
+                color: var(--color-orange);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-error {
+                color: var(--color-red);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-disconnected {
+                color: var(--text-muted);
+                font-size: 0.9em;
+            }
+
+            .mcp-tools-count {
+                color: var(--text-accent);
+                font-size: 0.8em;
+                font-style: italic;
+            }
+
+            .mcp-server-item hr {
+                margin: 1em 0;
+                border: none;
+                border-top: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-item .setting-item {
+                border: none;
+                padding: 0.5em 0;
+            }
+
+            .mcp-server-item .setting-item:last-child {
+                border-bottom: none;
+            }
+
+            .mcp-server-actions {
+                display: flex;
+                gap: 0.5em;
+                margin-top: 1em;
+                padding-top: 1em;
+                border-top: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-actions button {
+                padding: 0.5em 1em;
+                border-radius: 4px;
+                border: 1px solid var(--background-modifier-border);
+                background: var(--background-primary);
+                color: var(--text-normal);
+                cursor: pointer;
+                font-size: 0.9em;
+            }
+
+            .mcp-server-actions button:hover {
+                background: var(--background-modifier-hover);
+            }
+
+            .mcp-server-actions button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            .mcp-server-actions button.mod-cta {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                border-color: var(--interactive-accent);
+            }
+
+            .mcp-server-actions button.mod-warning {
+                background: var(--color-red);
+                color: white;
+                border-color: var(--color-red);
+            }
+
+            /* MCP Status Pill */
+            .mcp-status-pill {
+                font-size: 0.8em !important;
+                padding: 4px 8px !important;
+                min-width: auto !important;
+            }
+
+            .mcp-status-pill.mcp-connected {
+                background-color: var(--color-green) !important;
+                color: white !important;
+            }
+
+            .mcp-status-pill.mcp-disconnected {
+                background-color: var(--color-red) !important;
+                color: white !important;
+            }
+
+            .mcp-status-pill:hover {
+                opacity: 0.8;
             }
         `);
         this.styleElements.push(styleEl);

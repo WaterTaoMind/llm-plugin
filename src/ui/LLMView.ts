@@ -29,6 +29,13 @@ export class LLMView extends ItemView {
         this.llmService = new LLMService(plugin.settings);
         this.commandService = new CommandService(this.app, this.llmService);
         this.imageService = new ImageService(this.app);
+
+        // Connect MCP client service to LLM service and CommandService
+        const mcpClientService = plugin.getMCPClientService();
+        if (mcpClientService) {
+            this.llmService.setMCPClientService(mcpClientService);
+            this.commandService.setMCPClientService(mcpClientService);
+        }
     }
 
     getViewType(): string {
@@ -66,6 +73,12 @@ export class LLMView extends ItemView {
 
         // Set available commands
         this.inputArea.setCommands(this.commandService.getCommands());
+
+        // Connect MCP client service to InputArea for status display
+        const mcpClientService = this.plugin.getMCPClientService();
+        if (mcpClientService) {
+            this.inputArea.setMCPClientService(mcpClientService);
+        }
 
         // Set default model if available
         if (this.plugin.settings.defaultModel) {
