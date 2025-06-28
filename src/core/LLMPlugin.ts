@@ -10,7 +10,7 @@ export class LLMPlugin extends Plugin {
     settings: LLMPluginSettings;
     private markdownProcessor: MarkdownProcessor;
     private styleManager: StyleManager;
-    private mcpClientService: MCPClientService;
+    mcpClientService: MCPClientService; // Made public for settings access
 
     async onload() {
         await this.loadSettings();
@@ -18,7 +18,7 @@ export class LLMPlugin extends Plugin {
         // Initialize core services
         this.markdownProcessor = new MarkdownProcessor();
         this.styleManager = new StyleManager();
-        this.mcpClientService = new MCPClientService(this.settings);
+        this.mcpClientService = new MCPClientService(this.settings, this.app);
 
         // Initialize MCP client
         try {

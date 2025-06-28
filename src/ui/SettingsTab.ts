@@ -163,10 +163,37 @@ export class LLMSettingTab extends PluginSettingTab {
         const serverListContainer = containerEl.createDiv({cls: 'mcp-server-list'});
         this.refreshServerList(serverListContainer);
 
+        // Configuration file info
+        new Setting(containerEl)
+            .setName('Configuration File')
+            .setDesc('MCP servers can also be configured via settings.json file in the plugin directory')
+            .addButton(button => button
+                .setButtonText('Create Sample File')
+                .onClick(async () => {
+                    try {
+                        await this.plugin.mcpClientService.createSampleConfiguration();
+                    } catch (error) {
+                        new Notice(`Failed to create sample configuration: ${error}`, 5000);
+                    }
+                }))
+            .addButton(button => button
+                .setButtonText('Reload from File')
+                .onClick(async () => {
+                    try {
+                        // Reinitialize MCP client to reload configurations
+                        await this.plugin.mcpClientService.cleanup();
+                        await this.plugin.mcpClientService.initialize();
+                        this.display(); // Refresh settings display
+                        new Notice('MCP configuration reloaded from file');
+                    } catch (error) {
+                        new Notice(`Failed to reload configuration: ${error}`, 5000);
+                    }
+                }));
+
         // Add server button
         new Setting(containerEl)
             .setName('Add MCP Server')
-            .setDesc('Add a new MCP server configuration')
+            .setDesc('Add a new MCP server configuration manually')
             .addButton(button => button
                 .setButtonText('Add Server')
                 .onClick(() => {

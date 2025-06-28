@@ -1,5 +1,6 @@
 import { MCPServerManager } from './MCPServerManager';
 import { MCPToolRegistry } from './MCPToolRegistry';
+import { MCPConfigLoader } from './MCPConfigLoader';
 import {
     LLMPluginSettings,
     MCPServerConfig,
@@ -9,7 +10,7 @@ import {
     MCPToolResult,
     MCPResource
 } from '../core/types';
-import { Notice } from 'obsidian';
+import { Notice, App } from 'obsidian';
 
 /**
  * Main MCP Client Service
@@ -18,13 +19,23 @@ import { Notice } from 'obsidian';
 export class MCPClientService {
     private serverManager: MCPServerManager;
     private toolRegistry: MCPToolRegistry;
+    private configLoader: MCPConfigLoader;
     private settings: LLMPluginSettings;
     private healthCheckInterval?: NodeJS.Timeout;
+    private app: App;
 
-    constructor(settings: LLMPluginSettings) {
+    constructor(settings: LLMPluginSettings, app: App) {
         this.settings = settings;
+        this.app = app;
         this.serverManager = new MCPServerManager();
         this.toolRegistry = new MCPToolRegistry();
+
+        // Initialize config loader with plugin data path only
+        const pluginDataPath = this.getPluginDataPath();
+        this.configLoader = new MCPConfigLoader(pluginDataPath, this.app);
+
+        // Listen for configuration changes
+        this.configLoader.onConfigChange(this.handleConfigChange.bind(this));
     }
 
     /**
@@ -37,6 +48,9 @@ export class MCPClientService {
         }
 
         console.log('Initializing MCP Client Service...');
+
+        // Load configurations from files
+        await this.loadConfigurationsFromFiles();
 
         // Connect to all enabled servers
         if (this.settings.mcpAutoConnect) {
@@ -363,22 +377,134 @@ export class MCPClientService {
     }
 
     /**
+     * Load configurations from external files
+     */
+    private async loadConfigurationsFromFiles(): Promise<void> {
+        try {
+            const fileConfigs = await this.configLoader.loadConfigurations();
+
+            if (fileConfigs.length > 0) {
+                console.log(`Loaded ${fileConfigs.length} MCP server configurations from file`);
+
+                // Merge with existing settings (file configs take precedence)
+                const existingIds = new Set(this.settings.mcpServers.map(s => s.id));
+                const newConfigs = fileConfigs.filter(config => !existingIds.has(config.id));
+
+                if (newConfigs.length > 0) {
+                    this.settings.mcpServers.push(...newConfigs);
+                    new Notice(`Loaded ${newConfigs.length} new MCP server configurations from file`);
+                }
+
+                // Update existing configurations with file data
+                fileConfigs.forEach(fileConfig => {
+                    const existingIndex = this.settings.mcpServers.findIndex(s => s.id === fileConfig.id);
+                    if (existingIndex >= 0) {
+                        this.settings.mcpServers[existingIndex] = { ...this.settings.mcpServers[existingIndex], ...fileConfig };
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load MCP configurations from files:', error);
+            new Notice('Failed to load MCP configurations from files. Using plugin settings.', 3000);
+        }
+    }
+
+    /**
+     * Handle configuration file changes
+     */
+    private async handleConfigChange(configs: MCPServerConfig[]): Promise<void> {
+        console.log('MCP configuration file changed, reloading...');
+
+        try {
+            // Update settings with new configurations
+            this.settings.mcpServers = configs;
+
+            // Reconnect to servers if auto-connect is enabled
+            if (this.settings.mcpAutoConnect) {
+                await this.serverManager.disconnectAll();
+                await this.connectToAllServers();
+            }
+
+            new Notice('MCP configuration reloaded from file');
+        } catch (error) {
+            console.error('Failed to handle configuration change:', error);
+            new Notice(`Failed to reload MCP configuration: ${error}`, 5000);
+        }
+    }
+
+
+
+    /**
+     * Get plugin data directory path
+     */
+    private getPluginDataPath(): string {
+        // @ts-ignore - Access vault adapter base path
+        const adapter = this.app.vault.adapter;
+        if (adapter && 'basePath' in adapter) {
+            const vaultPath = (adapter as any).basePath || '';
+            if (vaultPath) {
+                // Construct plugin data path: vault/.obsidian/plugins/plugin-id/
+                return `${vaultPath}/.obsidian/plugins/llm-plugin`;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Save current configurations to file
+     */
+    async saveConfigurationsToFile(): Promise<void> {
+        try {
+            await this.configLoader.saveConfigurations(this.settings.mcpServers);
+        } catch (error) {
+            console.error('Failed to save MCP configurations to file:', error);
+            new Notice(`Failed to save MCP configurations: ${error}`, 5000);
+            throw error;
+        }
+    }
+
+    /**
+     * Get configuration file paths
+     */
+    getConfigurationPaths(): string[] {
+        return this.configLoader.getConfigPaths();
+    }
+
+    /**
+     * Create sample configuration file
+     */
+    async createSampleConfiguration(): Promise<void> {
+        try {
+            await this.configLoader.createSampleConfig();
+        } catch (error) {
+            console.error('Failed to create sample configuration:', error);
+            new Notice(`Failed to create sample configuration: ${error}`, 5000);
+            throw error;
+        }
+    }
+
+    /**
      * Cleanup resources
      */
     async cleanup(): Promise<void> {
         console.log('Cleaning up MCP Client Service...');
-        
+
         // Stop health monitoring
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
         }
 
+        // Cleanup config loader
+        if (this.configLoader) {
+            this.configLoader.cleanup();
+        }
+
         // Disconnect all servers
         await this.serverManager.disconnectAll();
-        
+
         // Clear tool registry
         this.toolRegistry.clear();
-        
+
         console.log('MCP Client Service cleanup complete');
     }
 }
