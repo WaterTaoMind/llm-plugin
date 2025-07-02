@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
-import { MCPServerConfig } from '../core/types';
+import { MCPServerConfig, ProcessingMode } from '../core/types';
 
 export class LLMSettingTab extends PluginSettingTab {
     plugin: LLMPlugin;
@@ -104,6 +104,52 @@ export class LLMSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
+        // Processing Mode Settings Section
+        containerEl.createEl('h3', {text: 'Processing Mode Settings'});
+
+        new Setting(containerEl)
+            .setName('Default Processing Mode')
+            .setDesc('Choose the default processing mode for new conversations')
+            .addDropdown(dropdown => dropdown
+                .addOption(ProcessingMode.CHAT, '💬 Chat Mode - Direct LLM processing (fast)')
+                .addOption(ProcessingMode.AGENT, '🤖 Agent Mode - ReAct workflow with tools (comprehensive)')
+                .setValue(this.plugin.settings.defaultMode)
+                .onChange(async (value) => {
+                    this.plugin.settings.defaultMode = value as ProcessingMode;
+                    await this.plugin.saveSettings();
+                    // Note: LLMService will pick up the new default mode on next initialization
+                }));
+
+        new Setting(containerEl)
+            .setName('Show Mode Selector')
+            .setDesc('Display mode selector in chat interface header')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showModeSelector)
+                .onChange(async (value) => {
+                    this.plugin.settings.showModeSelector = value;
+                    await this.plugin.saveSettings();
+                    this.display(); // Refresh to update UI
+                }));
+
+        // Command Help
+        if (this.plugin.settings.showModeSelector) {
+            const helpDiv = containerEl.createDiv({cls: 'setting-item-description'});
+            helpDiv.style.cssText = `
+                margin-top: -10px;
+                margin-bottom: 15px;
+                padding: 8px 12px;
+                background: var(--background-secondary);
+                border-radius: 4px;
+                font-size: 12px;
+                color: var(--text-muted);
+            `;
+            helpDiv.innerHTML = `
+                <strong>Command Overrides:</strong><br>
+                • <code>/chat &lt;message&gt;</code> - Force Chat Mode for this message<br>
+                • <code>/agent &lt;message&gt;</code> - Force Agent Mode for this message
+            `;
+        }
+
         // MCP Settings Section
         containerEl.createEl('h3', {text: 'Model Context Protocol (MCP) Settings'});
 
@@ -118,15 +164,6 @@ export class LLMSettingTab extends PluginSettingTab {
                     this.display(); // Refresh to show/hide MCP settings
                 }));
 
-        new Setting(containerEl)
-            .setName('Agentic Mode')
-            .setDesc('Enable agentic processing for complex requests using ReAct (Reasoning + Acting) system with Simon Wilson\'s LLM and Pocket Flow')
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.agenticMode)
-                .onChange(async (value) => {
-                    this.plugin.settings.agenticMode = value;
-                    await this.plugin.saveSettings();
-                }));
 
         if (this.plugin.settings.mcpEnabled) {
             new Setting(containerEl)

@@ -70,16 +70,12 @@ export class AgenticLLMService {
     }
 
     /**
-     * Send request to agentic system instead of simple LLM
+     * Send request to agentic system (always use ReAct agent in Agent mode)
      */
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {
         try {
-            // For simple requests, use direct LLM
-            if (this.isSimpleRequest(request.prompt)) {
-                return await this.callSimpleLLM(request);
-            }
-
-            // For complex requests, use ReAct agent
+            // In Agent mode, always use the ReAct agent - no complexity detection
+            console.log('🤖 Agent Mode: Using TypeScript ReAct Agent');
             return await this.callAgenticSystem(request);
 
         } catch (error) {
@@ -91,36 +87,8 @@ export class AgenticLLMService {
         }
     }
 
-    /**
-     * Determine if request needs agentic processing
-     */
-    private isSimpleRequest(prompt: string): boolean {
-        const agenticKeywords = [
-            'search', 'find', 'analyze', 'research', 'investigate',
-            'summarize', 'extract', 'process', 'youtube', 'video',
-            'file', 'document', 'data', 'information', 'help me',
-            'can you', 'please', 'how to', 'what is', 'explain'
-        ];
-
-        const lowerPrompt = prompt.toLowerCase();
-        
-        // Check for YouTube URLs specifically - these always need agentic processing
-        const youtubeUrlPattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)/;
-        if (youtubeUrlPattern.test(lowerPrompt)) {
-            console.log('🎬 YouTube URL detected - routing to agentic system');
-            return false; // Not simple, needs agentic processing
-        }
-        
-        // Check for agentic keywords
-        const needsAgentic = agenticKeywords.some(keyword => lowerPrompt.includes(keyword));
-        if (needsAgentic) {
-            console.log(`🤖 Agentic keyword detected - routing to agentic system`);
-            return false; // Not simple, needs agentic processing
-        }
-        
-        console.log('📝 Simple request - using traditional LLM');
-        return true; // Simple request
-    }
+    // Removed: isSimpleRequest() - complexity detection is now handled 
+    // at the LLMService level via explicit mode selection
 
     /**
      * Call simple LLM for basic requests
@@ -135,11 +103,15 @@ export class AgenticLLMService {
      */
     private async callAgenticSystem(request: LLMRequest): Promise<LLMResponse> {
         try {
-            console.log('🤖 Using TypeScript ReAct Agent for complex request...');
+            console.log('🤖 Using TypeScript ReAct Agent...');
 
             if (!this.reActAgent) {
-                console.warn('⚠️ ReAct agent not initialized, falling back to simple LLM');
-                return await this.callSimpleLLM(request);
+                const error = 'ReAct agent not initialized - cannot process in Agent mode';
+                console.error('❌', error);
+                return {
+                    result: '',
+                    error: error
+                };
             }
 
             // Determine max steps based on request complexity
@@ -155,8 +127,10 @@ export class AgenticLLMService {
 
         } catch (error) {
             console.error('❌ TypeScript ReAct Agent error:', error);
-            // Fallback to simple LLM
-            return await this.callSimpleLLM(request);
+            return {
+                result: '',
+                error: error instanceof Error ? error.message : 'Agent execution failed'
+            };
         }
     }
 

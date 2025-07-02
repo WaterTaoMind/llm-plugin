@@ -1,13 +1,16 @@
-import { LLMRequest, LLMResponse, LLMPluginSettings, MCPToolCall, MCPToolResult } from '../core/types';
+import { LLMRequest, LLMResponse, LLMPluginSettings, MCPToolCall, MCPToolResult, ProcessingMode, ParsedCommand } from '../core/types';
 import { MCPClientService } from './MCPClientService';
 import { AgenticLLMService } from './AgenticLLMService';
+import { parseCommand, getEffectiveMode } from '../utils/commandParser';
 
 export class LLMService {
     private mcpClientService?: MCPClientService;
     private agenticService: AgenticLLMService;
+    private currentMode: ProcessingMode;
 
     constructor(private settings: LLMPluginSettings) {
         this.agenticService = new AgenticLLMService(settings);
+        this.currentMode = settings.defaultMode || ProcessingMode.CHAT;
     }
 
     /**
@@ -18,21 +21,53 @@ export class LLMService {
         this.agenticService.setMCPClientService(mcpClientService);
     }
 
+    /**
+     * Get current processing mode
+     */
+    getCurrentMode(): ProcessingMode {
+        return this.currentMode;
+    }
+
+    /**
+     * Set processing mode (from UI selector)
+     */
+    setCurrentMode(mode: ProcessingMode): void {
+        this.currentMode = mode;
+        console.log(`🎯 UI Mode changed to: ${mode.toUpperCase()}`);
+    }
+
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {
         try {
             console.log('📥 Processing request:', request.prompt.substring(0, 100) + '...');
             
-            // Check if agentic system should be used
-            const useAgentic = await this.shouldUseAgenticSystem(request);
+            // Parse command prefixes and determine effective mode
+            const parsed = parseCommand(request.prompt);
+            const effectiveMode = getEffectiveMode(request.prompt, this.currentMode);
+            
+            // Create clean request with command prefix removed
+            const cleanRequest: LLMRequest = {
+                ...request,
+                prompt: parsed.cleanPrompt
+            };
 
-            if (useAgentic) {
-                console.log('🤖 Using agentic system for request');
-                return await this.agenticService.sendRequest(request);
+            // Log mode decision
+            if (parsed.mode !== null) {
+                console.log(`🎯 Command override: /${effectiveMode} - Processing in ${effectiveMode.toUpperCase()} mode`);
+            } else {
+                console.log(`🎯 UI mode: Processing in ${effectiveMode.toUpperCase()} mode`);
             }
 
-            // Fallback to traditional LLM API
-            console.log('🔗 Using traditional LLM API');
-            return await this.sendTraditionalRequest(request);
+            // Route to appropriate processing method
+            switch (effectiveMode) {
+                case ProcessingMode.CHAT:
+                    return await this.processChatMode(cleanRequest);
+                    
+                case ProcessingMode.AGENT:
+                    return await this.processAgentMode(cleanRequest);
+                    
+                default:
+                    throw new Error(`Unknown processing mode: ${effectiveMode}`);
+            }
 
         } catch (error) {
             console.error('Failed to send LLM request:', error);
@@ -41,6 +76,29 @@ export class LLMService {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
         }
+    }
+
+    /**
+     * Process request in Chat Mode (direct LLM CLI)
+     */
+    private async processChatMode(request: LLMRequest): Promise<LLMResponse> {
+        console.log('💬 Processing in Chat Mode - Direct LLM CLI');
+        return await this.sendTraditionalRequest(request);
+    }
+
+    /**
+     * Process request in Agent Mode (TypeScript ReAct Agent)
+     */
+    private async processAgentMode(request: LLMRequest): Promise<LLMResponse> {
+        // Check agent availability
+        const isAvailable = await this.agenticService.isAgentAvailable();
+        if (!isAvailable) {
+            console.warn('⚠️ Agent mode requested but not available, falling back to Chat mode');
+            return await this.processChatMode(request);
+        }
+
+        console.log('🤖 Processing in Agent Mode - TypeScript ReAct Agent');
+        return await this.agenticService.sendRequest(request);
     }
 
     /**
@@ -111,56 +169,8 @@ export class LLMService {
         };
     }
 
-    /**
-     * Determine if agentic system should be used
-     */
-    private async shouldUseAgenticSystem(request: LLMRequest): Promise<boolean> {
-        // Check if agentic system is available
-        const isAvailable = await this.agenticService.isAgentAvailable();
-        if (!isAvailable) {
-            console.log('🚫 Agentic system not available');
-            return false;
-        }
-
-        // Check user preference (could be a setting)
-        if (this.settings.agenticMode === false) {
-            console.log('🚫 Agentic mode disabled in settings');
-            return false;
-        }
-
-        // Check if request complexity warrants agentic processing
-        const isComplex = this.isComplexRequest(request.prompt);
-        console.log(`🎯 Request complexity analysis: ${isComplex ? 'COMPLEX (agentic)' : 'SIMPLE (traditional)'}`);
-        return isComplex;
-    }
-
-    /**
-     * Determine if request is complex enough for agentic processing
-     */
-    private isComplexRequest(prompt: string): boolean {
-        const complexKeywords = [
-            'analyze', 'research', 'investigate', 'find information',
-            'summarize video', 'youtube', 'extract data', 'process file',
-            'help me with', 'can you help', 'step by step', 'multiple steps',
-            'summarize' // Added standalone summarize
-        ];
-
-        const lowerPrompt = prompt.toLowerCase();
-        
-        // Check for YouTube URLs specifically
-        const youtubeUrlPattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)/;
-        if (youtubeUrlPattern.test(lowerPrompt)) {
-            console.log('🎬 YouTube URL detected in LLMService - using agentic system');
-            return true;
-        }
-        
-        const isComplex = complexKeywords.some(keyword => lowerPrompt.includes(keyword));
-        if (isComplex) {
-            console.log('🤖 Complex request detected in LLMService - using agentic system');
-        }
-        
-        return isComplex;
-    }
+    // Removed: shouldUseAgenticSystem() and isComplexRequest() 
+    // Replaced with explicit mode-based processing in sendRequest()
 
     /**
      * Process tool calls from LLM and send results back for final response

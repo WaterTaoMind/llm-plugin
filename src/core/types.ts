@@ -1,5 +1,18 @@
 // Core type definitions for the LLM Plugin
 
+// Processing Mode System
+export enum ProcessingMode {
+    CHAT = 'chat',
+    AGENT = 'agent'
+}
+
+// Command Processing Types
+export interface ParsedCommand {
+    mode: ProcessingMode | null; // null means use UI selected mode
+    cleanPrompt: string; // prompt with command prefix removed
+    originalPrompt: string;
+}
+
 // MCP-specific types (defined early for use in settings)
 export interface MCPServerConfig {
     id: string;
@@ -29,7 +42,9 @@ export interface LLMPluginSettings {
     mcpAutoConnect: boolean;
     mcpToolTimeout: number;
     mcpShowToolExecution: boolean;
-    agenticMode: boolean;
+    // Processing Mode Settings
+    defaultMode: ProcessingMode;
+    showModeSelector: boolean;
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
@@ -49,7 +64,9 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     mcpAutoConnect: true,
     mcpToolTimeout: 30000, // 30 seconds
     mcpShowToolExecution: true,
-    agenticMode: true
+    // Processing Mode Defaults
+    defaultMode: ProcessingMode.CHAT,
+    showModeSelector: true
 };
 
 export interface FileWithPath extends File {

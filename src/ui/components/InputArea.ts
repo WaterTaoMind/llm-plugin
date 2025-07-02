@@ -1,5 +1,5 @@
 import { Notice, App } from 'obsidian';
-import { Command, MCPServerConnection } from '../../core/types';
+import { Command, MCPServerConnection, ProcessingMode } from '../../core/types';
 import { SendIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
 import { joinPath, normalizePath, hasImageExtension } from '../../utils/pathUtils';
 import { MCPClientService } from '../../services/MCPClientService';
@@ -17,6 +17,7 @@ export class InputArea {
     private promptInput: HTMLTextAreaElement;
     private sendButton: HTMLButtonElement;
     private modelSelector: HTMLSelectElement;
+    private modeSelector: HTMLElement;
 
     // Pills
     private toolsPill: HTMLButtonElement;
@@ -51,6 +52,10 @@ export class InputArea {
     public onSendMessage: () => void = () => {};
     public onGetConversationId: () => void = () => {};
     public onClearConversationId: () => void = () => {};
+    public onModeChange: (mode: ProcessingMode) => void = () => {};
+
+    // Mode selector state
+    private currentMode: ProcessingMode = ProcessingMode.CHAT;
 
     // MCP integration
     private mcpClientService?: MCPClientService;
@@ -246,6 +251,9 @@ export class InputArea {
     private createControlsRow() {
         const controlsContainer = this.unifiedInputContainer.createDiv({ cls: 'llm-controls-container' });
 
+        // Mode selector (compact toggle)
+        this.createModeSelector(controlsContainer);
+
         // Model selector
         this.modelSelector = controlsContainer.createEl('select', { cls: 'llm-model-selector' });
         this.populateModelSelector();
@@ -277,7 +285,62 @@ export class InputArea {
         this.modelSelector.value = this.configData.models[0]?.id || 'custom';
     }
 
+    private createModeSelector(container: HTMLElement) {
+        // Create compact mode toggle container
+        this.modeSelector = container.createDiv({ cls: 'llm-mode-selector' });
+        
+        // Create toggle buttons
+        const chatButton = this.modeSelector.createEl('button', { 
+            cls: 'llm-mode-button llm-mode-chat',
+            attr: { 'data-mode': ProcessingMode.CHAT }
+        });
+        chatButton.innerHTML = '💬';
+        chatButton.title = 'Chat Mode - Direct LLM processing';
+        
+        const agentButton = this.modeSelector.createEl('button', { 
+            cls: 'llm-mode-button llm-mode-agent',
+            attr: { 'data-mode': ProcessingMode.AGENT }
+        });
+        agentButton.innerHTML = '🤖';
+        agentButton.title = 'Agent Mode - ReAct workflow with tools';
+        
+        // Set initial active state
+        this.updateModeSelector();
+        
+        // Add event listeners
+        chatButton.addEventListener('click', () => this.setMode(ProcessingMode.CHAT));
+        agentButton.addEventListener('click', () => this.setMode(ProcessingMode.AGENT));
+    }
 
+    private updateModeSelector() {
+        if (!this.modeSelector) return; // Guard against undefined modeSelector
+        
+        const buttons = this.modeSelector.querySelectorAll('.llm-mode-button');
+        buttons.forEach(button => {
+            const buttonMode = button.getAttribute('data-mode');
+            if (buttonMode === this.currentMode) {
+                button.addClass('active');
+            } else {
+                button.removeClass('active');
+            }
+        });
+    }
+
+    private setMode(mode: ProcessingMode) {
+        if (mode === this.currentMode) return;
+        
+        this.currentMode = mode;
+        this.updateModeSelector();
+        this.onModeChange(mode);
+    }
+
+    public getCurrentMode(): ProcessingMode {
+        return this.currentMode;
+    }
+
+    public setCurrentMode(mode: ProcessingMode) {
+        this.setMode(mode);
+    }
 
     private setupEventHandlers() {
         // Prompt input handlers

@@ -349,6 +349,7 @@ export class StyleManager {
                 gap: 12px;
             }
 
+
             .llm-chat-history {
                 flex: 1;
                 overflow-y: auto;
@@ -541,6 +542,98 @@ export class StyleManager {
 
             .mcp-status-pill:hover {
                 opacity: 0.8;
+            }
+
+            /* Mode Selector Styles */
+            .llm-controls-container {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px;
+                background: var(--background-primary-alt);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+            }
+
+            .llm-mode-selector {
+                display: flex;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 4px;
+                overflow: hidden;
+                background: var(--background-secondary);
+            }
+
+            .llm-mode-button {
+                padding: 6px 10px;
+                border: none;
+                background: transparent;
+                color: var(--text-muted);
+                font-size: 16px;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                border-right: 1px solid var(--background-modifier-border);
+            }
+
+            .llm-mode-button:last-child {
+                border-right: none;
+            }
+
+            .llm-mode-button:hover {
+                background: var(--background-modifier-hover);
+                color: var(--text-normal);
+            }
+
+            .llm-mode-button.active {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            }
+
+            .llm-model-selector {
+                flex: 1;
+                padding: 6px 10px;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 4px;
+                background: var(--background-primary);
+                color: var(--text-normal);
+                font-size: 13px;
+                min-width: 120px;
+            }
+
+            .llm-model-selector:focus {
+                outline: none;
+                border-color: var(--interactive-accent);
+                background: var(--background-primary-alt);
+            }
+
+            .llm-unified-send-button {
+                padding: 6px 12px;
+                border: none;
+                border-radius: 4px;
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .llm-unified-send-button:hover {
+                background: var(--interactive-accent-hover);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            .llm-unified-send-button:active {
+                transform: translateY(0);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            }
+
+            .llm-unified-send-button svg {
+                width: 16px;
+                height: 16px;
+                fill: currentColor;
             }
         `);
         this.styleElements.push(styleEl);

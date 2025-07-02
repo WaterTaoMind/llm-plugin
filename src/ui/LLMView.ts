@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, Notice, MarkdownView } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
-import { ChatMessage, LLMRequest, RequestState } from '../core/types';
+import { ChatMessage, LLMRequest, RequestState, ProcessingMode } from '../core/types';
 import { LLMService } from '../services/LLMService';
 import { CommandService } from '../services/CommandService';
 import { ImageService } from '../services/ImageService';
@@ -61,12 +61,18 @@ export class LLMView extends ItemView {
         const historyContainer = chatContainer.createDiv();
         this.chatHistory = new ChatHistory(historyContainer);
 
-        // Initialize input area
+        // Initialize input area (now includes mode selector)
         const inputContainer = chatContainer.createDiv();
         // Get plugin directory path (normalize for cross-platform compatibility)
         const basePath = (this.app.vault.adapter as any).basePath;
         const pluginDir = joinPath(normalizePath(basePath), '.obsidian', 'plugins', this.plugin.manifest.id);
         this.inputArea = new InputArea(inputContainer, this.app, pluginDir);
+
+        // Connect mode selector to LLM service
+        this.inputArea.setCurrentMode(this.llmService.getCurrentMode());
+        this.inputArea.onModeChange = (mode: ProcessingMode) => {
+            this.llmService.setCurrentMode(mode);
+        };
 
         // Setup event handlers
         this.setupEventHandlers();
