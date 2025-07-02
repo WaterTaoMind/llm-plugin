@@ -84,9 +84,16 @@ export class MCPToolRegistry {
      */
     getToolsForLLM(): any[] {
         return this.getAllTools().map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema,
+            type: "function",
+            function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema || {
+                    type: "object",
+                    properties: {},
+                    required: []
+                }
+            },
             // Add server context for disambiguation
             server: tool.serverName
         }));

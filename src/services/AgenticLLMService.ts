@@ -1,17 +1,24 @@
 import { LLMRequest, LLMResponse, LLMPluginSettings } from '../core/types';
 import { MCPClientService } from './MCPClientService';
+import { ReActAgent } from '../agents/ReActAgent';
+import { LLMWilsonProvider } from '../agents/LLMWilsonProvider';
+import { MCPClientAdapter } from '../agents/MCPClientAdapter';
+import { ModelConfig } from '../agents/types';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
 /**
- * Agentic LLM Service using Simon Wilson's LLM + Pocket Flow
+ * Agentic LLM Service using TypeScript ReAct Agent
  * 
- * This service replaces simple LLM calls with an agentic ReAct system
+ * This service replaces simple LLM calls with a native TypeScript agentic ReAct system
  * that can reason, plan, and use tools to accomplish complex tasks.
+ * 
+ * Replaces the previous Python subprocess approach with proper TypeScript integration.
  */
 export class AgenticLLMService {
     private mcpClientService?: MCPClientService;
+    private reActAgent?: ReActAgent;
     private agentPath: string;
 
     constructor(private settings: LLMPluginSettings) {
@@ -24,6 +31,42 @@ export class AgenticLLMService {
      */
     setMCPClientService(mcpClientService: MCPClientService): void {
         this.mcpClientService = mcpClientService;
+        this.initializeReActAgent();
+    }
+
+    /**
+     * Initialize the TypeScript ReAct agent
+     */
+    private initializeReActAgent(): void {
+        if (!this.mcpClientService) {
+            console.warn('Cannot initialize ReAct agent without MCP client service');
+            return;
+        }
+
+        try {
+            // Create LLM provider using FastAPI wrapper
+            const llmProvider = new LLMWilsonProvider(
+                this.settings.llmConnectorApiUrl || 'http://localhost:49153',
+                this.settings.llmConnectorApiKey || 'your_api_key'
+            );
+            
+            // Create MCP client adapter
+            const mcpClient = new MCPClientAdapter(this.mcpClientService);
+            
+            // Create model configuration
+            const modelConfig: ModelConfig = {
+                reasoning: this.settings.defaultModel || 'gpt-4o-mini',
+                summarization: this.settings.defaultModel || 'gpt-4o-mini',
+                default: this.settings.defaultModel || 'gpt-4o-mini'
+            };
+            
+            // Initialize the ReAct agent
+            this.reActAgent = new ReActAgent(llmProvider, mcpClient, modelConfig);
+            
+            console.log('✅ TypeScript ReAct Agent initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize ReAct agent:', error);
+        }
     }
 
     /**
@@ -60,7 +103,23 @@ export class AgenticLLMService {
         ];
 
         const lowerPrompt = prompt.toLowerCase();
-        return !agenticKeywords.some(keyword => lowerPrompt.includes(keyword));
+        
+        // Check for YouTube URLs specifically - these always need agentic processing
+        const youtubeUrlPattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)/;
+        if (youtubeUrlPattern.test(lowerPrompt)) {
+            console.log('🎬 YouTube URL detected - routing to agentic system');
+            return false; // Not simple, needs agentic processing
+        }
+        
+        // Check for agentic keywords
+        const needsAgentic = agenticKeywords.some(keyword => lowerPrompt.includes(keyword));
+        if (needsAgentic) {
+            console.log(`🤖 Agentic keyword detected - routing to agentic system`);
+            return false; // Not simple, needs agentic processing
+        }
+        
+        console.log('📝 Simple request - using traditional LLM');
+        return true; // Simple request
     }
 
     /**
@@ -76,13 +135,18 @@ export class AgenticLLMService {
      */
     private async callAgenticSystem(request: LLMRequest): Promise<LLMResponse> {
         try {
-            console.log('🤖 Using agentic system for complex request...');
+            console.log('🤖 Using TypeScript ReAct Agent for complex request...');
 
-            // Prepare agent configuration
-            const agentConfig = this.prepareAgentConfig(request);
+            if (!this.reActAgent) {
+                console.warn('⚠️ ReAct agent not initialized, falling back to simple LLM');
+                return await this.callSimpleLLM(request);
+            }
+
+            // Determine max steps based on request complexity
+            const maxSteps = this.getMaxStepsForRequest(request);
             
-            // Call the ReAct agent
-            const result = await this.executeReActAgent(request.prompt, agentConfig);
+            // Execute the TypeScript ReAct agent
+            const result = await this.reActAgent.execute(request.prompt, maxSteps);
 
             return {
                 result: result,
@@ -90,206 +154,89 @@ export class AgenticLLMService {
             };
 
         } catch (error) {
-            console.error('Agentic system error:', error);
+            console.error('❌ TypeScript ReAct Agent error:', error);
             // Fallback to simple LLM
             return await this.callSimpleLLM(request);
         }
     }
 
     /**
-     * Prepare configuration for the ReAct agent
+     * Determine maximum steps based on request complexity
      */
-    private prepareAgentConfig(request: LLMRequest): any {
-        return {
-            model_profile: this.getModelProfile(request),
-            max_steps: 10,
-            config_path: this.getMCPConfigPath()
-        };
-    }
-
-    /**
-     * Get appropriate model profile based on request
-     */
-    private getModelProfile(request: LLMRequest): string {
-        const model = request.model || this.settings.defaultModel;
+    private getMaxStepsForRequest(request: LLMRequest): number {
+        const prompt = request.prompt.toLowerCase();
         
-        // Map Obsidian models to agent profiles
-        if (model?.includes('gpt-4o')) return 'powerful';
-        if (model?.includes('gpt-4o-mini')) return 'fast';
-        if (model?.includes('claude')) return 'powerful';
-        
-        return 'balanced'; // Default profile
-    }
-
-    /**
-     * Get path to MCP configuration
-     */
-    private getMCPConfigPath(): string {
-        // Use the same settings.json that the plugin uses
-        const pluginDir = this.getPluginDirectory();
-        return path.join(pluginDir, 'settings.json');
-    }
-
-    /**
-     * Execute the ReAct agent
-     */
-    private async executeReActAgent(prompt: string, config: any): Promise<string> {
-        return new Promise((resolve, reject) => {
-            const pythonPath = this.getPythonPath();
-            const agentMainPath = path.join(this.agentPath, 'main.py');
-
-            // Build command arguments
-            const args = [
-                agentMainPath,
-                '--model-profile', config.model_profile,
-                '--max-steps', config.max_steps.toString(),
-                prompt
-            ];
-
-            console.log(`🐍 Executing: ${pythonPath} ${args.join(' ')}`);
-
-            const childProcess = spawn(pythonPath, args, {
-                cwd: this.agentPath,
-                env: {
-                    ...process.env,
-                    PYTHONPATH: this.agentPath
-                }
-            });
-
-            let stdout = '';
-            let stderr = '';
-
-            childProcess.stdout?.on('data', (data: Buffer) => {
-                stdout += data.toString();
-            });
-
-            childProcess.stderr?.on('data', (data: Buffer) => {
-                stderr += data.toString();
-            });
-
-            childProcess.on('close', (code: number | null) => {
-                if (code === 0) {
-                    // Extract the final result from agent output
-                    const result = this.extractAgentResult(stdout);
-                    resolve(result);
-                } else {
-                    console.error('Agent process error:', stderr);
-                    reject(new Error(`Agent process failed with code ${code}: ${stderr}`));
-                }
-            });
-
-            childProcess.on('error', (error: Error) => {
-                console.error('Failed to start agent process:', error);
-                reject(error);
-            });
-        });
-    }
-
-    /**
-     * Extract final result from agent output
-     */
-    private extractAgentResult(output: string): string {
-        // Look for the final result section
-        const lines = output.split('\n');
-        let inResultSection = false;
-        let result = '';
-
-        for (const line of lines) {
-            if (line.includes('REACT AGENT FINAL RESULT')) {
-                inResultSection = true;
-                continue;
-            }
-            if (inResultSection && line.startsWith('=')) {
-                break;
-            }
-            if (inResultSection && line.trim()) {
-                result += line + '\n';
-            }
+        // YouTube URLs may need multiple steps (transcript + summarization)
+        if (prompt.includes('youtube.com') || prompt.includes('youtu.be')) {
+            return 5;
         }
-
-        return result.trim() || output.trim();
+        
+        // File operations might need multiple steps
+        if (prompt.includes('file') || prompt.includes('document')) {
+            return 7;
+        }
+        
+        // Research requests might need more steps
+        if (prompt.includes('research') || prompt.includes('analyze') || prompt.includes('investigate')) {
+            return 8;
+        }
+        
+        // Default to moderate number of steps
+        return 5;
     }
 
     /**
-     * Call Simon Wilson's LLM CLI directly
-     */
-    private async callLLMCLI(prompt: string, model: string): Promise<LLMResponse> {
-        return new Promise((resolve, reject) => {
-            const args = ['-m', model, prompt];
-
-            const childProcess = spawn('llm', args);
-            let stdout = '';
-            let stderr = '';
-
-            childProcess.stdout?.on('data', (data: Buffer) => {
-                stdout += data.toString();
-            });
-
-            childProcess.stderr?.on('data', (data: Buffer) => {
-                stderr += data.toString();
-            });
-
-            childProcess.on('close', (code: number | null) => {
-                if (code === 0) {
-                    resolve({ result: stdout.trim() });
-                } else {
-                    reject(new Error(`LLM CLI failed: ${stderr}`));
-                }
-            });
-        });
-    }
-
-    /**
-     * Get path to the ReAct agent
-     */
-    private getAgentPath(): string {
-        // This should point to where you've placed the ReAct agent code
-        // Could be in the plugin directory or a separate location
-        const pluginDir = this.getPluginDirectory();
-        return path.join(pluginDir, 'agent');
-    }
-
-    /**
-     * Get plugin directory path
-     */
-    private getPluginDirectory(): string {
-        // This should match the plugin directory structure
-        return path.join(process.cwd(), '.obsidian', 'plugins', 'unofficial-llm-integration');
-    }
-
-    /**
-     * Get Python executable path
-     */
-    private getPythonPath(): string {
-        // Try to find Python executable
-        // You might want to make this configurable
-        return process.platform === 'win32' ? 'python' : 'python3';
-    }
-
-    /**
-     * Check if agent system is available
+     * Check if TypeScript agent system is available
      */
     async isAgentAvailable(): Promise<boolean> {
         try {
-            const agentMainPath = path.join(this.agentPath, 'main.py');
-            return fs.existsSync(agentMainPath);
-        } catch {
+            const llmPath = '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/llm';
+            const llmExists = fs.existsSync(llmPath);
+            const agentInitialized = !!this.reActAgent;
+            
+            console.log(`🔍 TypeScript Agent availability check:`);
+            console.log(`   LLM CLI: ${llmExists ? '✅' : '❌'} (${llmPath})`);
+            console.log(`   ReAct Agent: ${agentInitialized ? '✅' : '❌'} (TypeScript)`);
+            console.log(`   MCP Client: ${!!this.mcpClientService ? '✅' : '❌'} (Service)`);
+            
+            return llmExists && agentInitialized && !!this.mcpClientService;
+        } catch (error) {
+            console.error('❌ Error checking agent availability:', error);
             return false;
         }
     }
 
+
     /**
-     * Install agent system
+     * Call LLM API directly for simple requests
+     */
+    private async callLLMCLI(prompt: string, model: string): Promise<LLMResponse> {
+        try {
+            const llmProvider = new LLMWilsonProvider(
+                this.settings.llmConnectorApiUrl || 'http://localhost:49153',
+                this.settings.llmConnectorApiKey || 'your_api_key'
+            );
+            const result = await llmProvider.callLLM(prompt, model);
+            return { result };
+        } catch (error) {
+            throw new Error(`LLM API failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Get path to the legacy agent directory (kept for compatibility)
+     */
+    private getAgentPath(): string {
+        // Legacy path - no longer used with TypeScript agent
+        return '/Users/zhonghaoning1/Work/AgentExplore';
+    }
+
+
+    /**
+     * Install TypeScript agent system
      */
     async installAgent(): Promise<void> {
-        // This could download and set up the ReAct agent
-        // For now, just create the directory structure
-        const agentDir = this.agentPath;
-        if (!fs.existsSync(agentDir)) {
-            fs.mkdirSync(agentDir, { recursive: true });
-        }
-        
-        // Copy agent files from your AgentExplore implementation
-        // This would need to be implemented based on your deployment strategy
+        console.log('🔧 TypeScript ReAct Agent - No installation required');
+        console.log('✅ Agent system ready - using native TypeScript implementation');
     }
 }

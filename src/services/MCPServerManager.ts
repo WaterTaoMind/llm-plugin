@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MCPServerConfig, MCPServerConnection, MCPTool, MCPResource } from '../core/types';
 import { Notice } from 'obsidian';
 
@@ -10,7 +11,7 @@ import { Notice } from 'obsidian';
 export class MCPServerManager {
     private connections: Map<string, {
         client: Client;
-        transport: StdioClientTransport;
+        transport: StdioClientTransport | StreamableHTTPClientTransport;
         config: MCPServerConfig;
         status: MCPServerConnection;
     }> = new Map();
@@ -31,20 +32,73 @@ export class MCPServerManager {
             // Disconnect existing connection if any
             await this.disconnectServer(serverId);
 
-            // Create transport
+            // Create transport with enhanced environment and stdio filtering
+            const enhancedEnv = {
+                ...process.env,
+                ...config.env,
+                // Ensure Python path and conda environment
+                PATH: `/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin:${process.env.PATH}`,
+                CONDA_DEFAULT_ENV: 'llm',
+                CONDA_PREFIX: '/opt/homebrew/Caskroom/miniconda/base/envs/llm',
+                PYTHONPATH: '/Users/zhonghaoning1/Work/tools',
+                // Add working directory as environment variable
+                PWD: '/Users/zhonghaoning1/Work/tools',
+                // Disable verbose output from MCP server to reduce non-JSON noise
+                PYTHONUNBUFFERED: '1',
+                // Suppress debug output that might interfere with JSON parsing
+                LOG_LEVEL: 'ERROR',
+                // Explicitly pass API keys to ensure they're available
+                YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || 'AIzaSyBTecaDmWIOsbs93tLutJu2XnsdNq7gL6Y',
+                Assemblyai_api_key: process.env.Assemblyai_api_key || 'b09222ebbc344e1ebc659a90c89f4cda',
+                Groq_api_key: process.env.Groq_api_key || '[REMOVED_GROQ_API_KEY]'
+            };
+            
+            console.log(`🔧 MCP Server ${config.name}: Enhanced environment prepared`);
+            console.log(`🔧 Python path: ${enhancedEnv.PATH?.split(':')[0]}`);
+            console.log(`🔧 Working directory: ${enhancedEnv.PWD}`);
+            
+            // Use stdio transport with enhanced environment
             const transport = new StdioClientTransport({
                 command: config.command,
                 args: config.args,
-                env: config.env
+                env: enhancedEnv
             });
 
-            // Create client
+            // Create client with enhanced stdio handling
             const client = new Client({
                 name: "obsidian-llm-plugin",
                 version: "1.0.0"
             }, {
                 capabilities: {}
             });
+
+            // Patch transport to handle non-JSON stdio output
+            const originalSend = transport.send.bind(transport);
+            const originalClose = transport.close.bind(transport);
+            
+            // Override transport to add better error handling
+            (transport as any)._originalProcessMessage = (transport as any).processMessage;
+            (transport as any).processMessage = function(line: string) {
+                try {
+                    line = line.trim();
+                    if (!line) return;
+                    
+                    // Skip non-JSON lines (debug output from server)
+                    if (!line.startsWith('{') && !line.startsWith('[')) {
+                        console.debug(`🔧 MCP Server ${config.name}: Skipping non-JSON output:`, line);
+                        return;
+                    }
+                    
+                    // Try to parse JSON
+                    JSON.parse(line);
+                    
+                    // If successful, call original handler
+                    return this._originalProcessMessage(line);
+                } catch (error) {
+                    console.debug(`🔧 MCP Server ${config.name}: Skipping malformed JSON:`, line, error);
+                    return;
+                }
+            };
 
             // Connect
             await client.connect(transport);
@@ -116,8 +170,10 @@ export class MCPServerManager {
                 this.reconnectTimeouts.delete(serverId);
             }
 
-            // Close transport
-            await connection.transport.close();
+            // Close transport if it exists
+            if (connection.transport) {
+                await connection.transport.close();
+            }
             
             // Update status
             connection.status.status = 'disconnected';
@@ -159,14 +215,44 @@ export class MCPServerManager {
         }
 
         try {
+            console.log(`🔧 Executing tool ${toolName} on server ${serverId} with parameters:`, JSON.stringify(arguments_, null, 2));
+            const startTime = Date.now();
+            
             const result = await connection.client.callTool({
                 name: toolName,
                 arguments: arguments_
             });
+            
+            const executionTime = Date.now() - startTime;
+            console.log(`✅ Tool ${toolName} completed in ${executionTime}ms`);
+            
+            // Enhanced logging for YouTube transcript debugging
+            const resultString = JSON.stringify(result);
+            const resultSize = resultString.length;
+            console.log(`📄 Result size: ${resultSize} characters`);
+            console.log(`📄 Result structure:`, Object.keys(result));
+            console.log(`📄 Full result:`, result);
+            
+            if (toolName.includes('transcript') && result.content) {
+                const content = Array.isArray(result.content) ? result.content[0] : result.content;
+                if (content && content.text) {
+                    const textLength = content.text.length;
+                    console.log(`📄 Transcript text length: ${textLength} characters`);
+                    console.log(`📄 Transcript preview:`, content.text.substring(0, 500) + '...');
+                    
+                    // Check if this is actually an error response
+                    if (content.text.includes('Unable to generate transcript')) {
+                        console.log(`❌ Server returned error instead of transcript`);
+                        console.log(`❌ This suggests the MCP server failed to process the request properly`);
+                    }
+                }
+            }
+            
+            console.log(`📄 Result preview:`, resultString.substring(0, 200) + '...');
 
             return result;
         } catch (error) {
-            console.error(`Failed to execute tool ${toolName} on server ${serverId}:`, error);
+            console.error(`❌ Failed to execute tool ${toolName} on server ${serverId}:`, error);
             throw error;
         }
     }

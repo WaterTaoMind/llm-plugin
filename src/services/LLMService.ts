@@ -20,6 +20,8 @@ export class LLMService {
 
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {
         try {
+            console.log('📥 Processing request:', request.prompt.substring(0, 100) + '...');
+            
             // Check if agentic system should be used
             const useAgentic = await this.shouldUseAgenticSystem(request);
 
@@ -47,6 +49,34 @@ export class LLMService {
     private async sendTraditionalRequest(request: LLMRequest): Promise<LLMResponse> {
         // Get available MCP tools if MCP is enabled
         const tools = this.mcpClientService?.getToolsForLLM() || [];
+        
+        // Debug: Log available tools for YouTube-related requests
+        const lowerPrompt = request.prompt.toLowerCase();
+        if (lowerPrompt.includes('youtube') || lowerPrompt.includes('video')) {
+            console.log('🔧 Available MCP tools for YouTube request:', tools.map(t => t.function?.name || t.name));
+            console.log('🔧 Tool details:', JSON.stringify(tools, null, 2));
+        }
+
+        // For YouTube requests, warn that tools aren't available in traditional mode
+        if (lowerPrompt.includes('youtube') || /youtube\.com|youtu\.be/.test(lowerPrompt)) {
+            console.warn('⚠️ YouTube request in traditional mode - tools not available in this backend');
+            console.warn('Consider enabling agentic mode for tool-based requests');
+        }
+
+        const requestBody = {
+            prompt: request.prompt,
+            template: request.template,
+            model: request.model,
+            options: request.options,
+            json_mode: false,
+            images: request.images
+            // Note: tools and tool_choice removed since backend doesn't support them
+        };
+
+        // Debug: Log the actual request being sent for YouTube requests
+        if (lowerPrompt.includes('youtube') || lowerPrompt.includes('video')) {
+            console.log('📤 Request payload:', JSON.stringify(requestBody, null, 2));
+        }
 
         const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
             method: 'POST',
@@ -55,16 +85,7 @@ export class LLMService {
                 'Accept': 'application/json',
                 'X-API-Key': this.settings.llmConnectorApiKey
             },
-            body: JSON.stringify({
-                prompt: request.prompt,
-                template: request.template,
-                model: request.model,
-                options: request.options,
-                json_mode: false,
-                images: request.images,
-                tools: tools.length > 0 ? tools : undefined, // Include tools if available
-                tool_choice: tools.length > 0 ? "auto" : undefined // Let LLM decide
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -73,9 +94,15 @@ export class LLMService {
 
         const responseData = await response.json();
 
-        // Check if LLM wants to call tools
-        if (responseData.tool_calls && this.mcpClientService) {
-            return await this.processToolCallsAndRespond(responseData, request);
+        // Debug: Log response for YouTube requests
+        if (lowerPrompt.includes('youtube') || lowerPrompt.includes('video')) {
+            console.log('📥 Response data:', JSON.stringify(responseData, null, 2));
+        }
+
+        // Note: Tool calling removed since backend doesn't support it
+        // All tool-based requests should use agentic mode instead
+        if (lowerPrompt.includes('youtube') || /youtube\.com|youtu\.be/.test(lowerPrompt)) {
+            console.warn('⚠️ YouTube request processed without tools - use agentic mode for tool support');
         }
 
         return {
@@ -91,16 +118,20 @@ export class LLMService {
         // Check if agentic system is available
         const isAvailable = await this.agenticService.isAgentAvailable();
         if (!isAvailable) {
+            console.log('🚫 Agentic system not available');
             return false;
         }
 
         // Check user preference (could be a setting)
         if (this.settings.agenticMode === false) {
+            console.log('🚫 Agentic mode disabled in settings');
             return false;
         }
 
         // Check if request complexity warrants agentic processing
-        return this.isComplexRequest(request.prompt);
+        const isComplex = this.isComplexRequest(request.prompt);
+        console.log(`🎯 Request complexity analysis: ${isComplex ? 'COMPLEX (agentic)' : 'SIMPLE (traditional)'}`);
+        return isComplex;
     }
 
     /**
@@ -110,11 +141,25 @@ export class LLMService {
         const complexKeywords = [
             'analyze', 'research', 'investigate', 'find information',
             'summarize video', 'youtube', 'extract data', 'process file',
-            'help me with', 'can you help', 'step by step', 'multiple steps'
+            'help me with', 'can you help', 'step by step', 'multiple steps',
+            'summarize' // Added standalone summarize
         ];
 
         const lowerPrompt = prompt.toLowerCase();
-        return complexKeywords.some(keyword => lowerPrompt.includes(keyword));
+        
+        // Check for YouTube URLs specifically
+        const youtubeUrlPattern = /(?:youtube\.com\/watch\?v=|youtu\.be\/)/;
+        if (youtubeUrlPattern.test(lowerPrompt)) {
+            console.log('🎬 YouTube URL detected in LLMService - using agentic system');
+            return true;
+        }
+        
+        const isComplex = complexKeywords.some(keyword => lowerPrompt.includes(keyword));
+        if (isComplex) {
+            console.log('🤖 Complex request detected in LLMService - using agentic system');
+        }
+        
+        return isComplex;
     }
 
     /**
