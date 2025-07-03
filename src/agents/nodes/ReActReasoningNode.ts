@@ -1,4 +1,4 @@
-import { Node } from "../BaseNode";
+import { Node } from "pocketflow";
 import { AgentSharedState, LLMProvider, ReasoningResponse, ActionDecision } from '../types';
 
 /**
@@ -70,6 +70,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         reasoning: ReasoningResponse
     ): Promise<string | undefined> {
         const { currentStep } = prepData;
+        const maxSteps = shared.maxSteps || 10;
         
         // Update shared state
         Object.assign(shared, {
@@ -79,14 +80,23 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             nextAction: reasoning.action
         });
         
-        return "default";
+        // Check if we've reached maximum steps
+        if (currentStep >= maxSteps) {
+            console.log(`⏰ Reached maximum steps (${maxSteps}) - forcing completion`);
+            shared.goalStatus = `Completed after reaching maximum ${maxSteps} steps`;
+            return "complete"; // Force completion
+        }
+        
+        // Return action for PocketFlow conditional branching
+        // This determines which node to execute next
+        return reasoning.decision; // "continue" or "complete"
     }
 
     /**
      * Fallback method when all retries fail
      * Following PocketFlow execFallback pattern
      */
-    execFallback(prepData: { state: AgentSharedState; currentStep: number }, error: Error): ReasoningResponse {
+    async execFallback(prepData: { state: AgentSharedState; currentStep: number }, error: Error): Promise<ReasoningResponse> {
         const { state, currentStep } = prepData;
         console.log('🔄 Using reasoning fallback...');
         

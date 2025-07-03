@@ -1,4 +1,4 @@
-import { Node } from "../BaseNode";
+import { Node } from "pocketflow";
 import { AgentSharedState, MCPClient, MCPTool } from '../types';
 
 /**
@@ -6,8 +6,8 @@ import { AgentSharedState, MCPClient, MCPTool } from '../types';
  * Following PocketFlow TypeScript SDK patterns
  */
 export class DiscoverToolsNode extends Node<AgentSharedState> {
-    constructor(private mcpClient: MCPClient) {
-        super(1, 1); // Single attempt, minimal wait time
+    constructor(private mcpClient: MCPClient, maxRetries: number = 1, waitTime: number = 1) {
+        super(maxRetries, waitTime); // Single attempt, minimal wait time
     }
 
     async prep(shared: AgentSharedState): Promise<void> {
@@ -65,7 +65,7 @@ export class DiscoverToolsNode extends Node<AgentSharedState> {
      * Fallback method when tool discovery fails
      * Following PocketFlow execFallback pattern
      */
-    execFallback(_: void, error: Error): { availableTools: MCPTool[]; toolsByServer: any; toolServerMap: Record<string, string> } {
+    async execFallback(_: void, error: Error): Promise<{ availableTools: MCPTool[]; toolsByServer: any; toolServerMap: Record<string, string> }> {
         console.error('❌ Tool discovery failed:', error);
         console.log('🔄 Using empty tools fallback - agent can still reason and respond');
         

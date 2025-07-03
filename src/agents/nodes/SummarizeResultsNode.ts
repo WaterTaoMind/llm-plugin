@@ -1,4 +1,4 @@
-import { Node } from "../BaseNode";
+import { Node } from "pocketflow";
 import { AgentSharedState, LLMProvider } from '../types';
 
 /**
@@ -61,7 +61,7 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
      * Fallback method when all retries fail
      * Following PocketFlow execFallback pattern
      */
-    execFallback(prompt: string, error: Error): string {
+    async execFallback(prompt: string, error: Error): Promise<string> {
         console.log('🔄 Using summarization fallback...');
         
         // Generate fallback summary from prompt content

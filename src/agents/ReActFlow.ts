@@ -1,0 +1,133 @@
+import { Flow } from "pocketflow";
+import { AgentSharedState, LLMProvider, MCPClient, ModelConfig } from './types';
+import { DiscoverToolsNode } from './nodes/DiscoverToolsNode';
+import { ReActReasoningNode } from './nodes/ReActReasoningNode';
+import { ReActActionNode } from './nodes/ReActActionNode';
+import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
+
+/**
+ * PocketFlow-based ReAct Agent using proper Flow class and node chaining
+ * This implementation follows true PocketFlow patterns with automatic workflow execution
+ */
+export class ReActFlow {
+    private flow: Flow<AgentSharedState>;
+    private discoverToolsNode: DiscoverToolsNode;
+    private reasoningNode: ReActReasoningNode;
+    private actionNode: ReActActionNode;
+    private summarizeNode: SummarizeResultsNode;
+
+    constructor(
+        llmProvider: LLMProvider,
+        mcpClient: MCPClient,
+        modelConfig: ModelConfig,
+        // Retry configuration options
+        reasoningRetries: number = 3,
+        actionRetries: number = 3,
+        summarizeRetries: number = 2
+    ) {
+        // Initialize PocketFlow nodes
+        this.discoverToolsNode = new DiscoverToolsNode(mcpClient, 1, 1);
+        this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
+        this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
+        this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
+
+        // Set up PocketFlow node chaining with conditional branching
+        this.setupNodeChaining();
+
+        // Create the Flow starting with tool discovery
+        this.flow = new Flow<AgentSharedState>(this.discoverToolsNode);
+    }
+
+    /**
+     * Set up PocketFlow node chaining with conditional transitions
+     * Following PocketFlow patterns for automatic workflow execution
+     */
+    private setupNodeChaining(): void {
+        // Step 1: Tool Discovery -> Reasoning
+        this.discoverToolsNode.next(this.reasoningNode);
+
+        // Step 2: Reasoning -> Action (continue) OR Summarization (complete)
+        this.reasoningNode.on("continue", this.actionNode);
+        this.reasoningNode.on("complete", this.summarizeNode);
+
+        // Step 3: Action -> Loop back to Reasoning (for iterative ReAct)
+        this.actionNode.on("default", this.reasoningNode);
+
+        // Step 4: Summarization is the end (no next node)
+        // this.summarizeNode returns undefined in post() to end the flow
+    }
+
+    /**
+     * Execute the ReAct workflow using PocketFlow's automatic execution
+     * 
+     * @param userRequest The user's request to process
+     * @param maxSteps Maximum number of reasoning steps (default: 10)
+     * @returns Final response from the agent
+     */
+    async execute(userRequest: string, maxSteps: number = 10): Promise<string> {
+        console.log('🚀 PocketFlow ReAct Agent - Starting execution');
+        console.log(`📝 User Request: ${userRequest}`);
+        console.log(`🔢 Max Steps: ${maxSteps}`);
+
+        // Initialize shared state
+        const sharedState: AgentSharedState = {
+            userRequest,
+            maxSteps,
+            currentStep: 0,
+            actionHistory: [],
+            modelConfig: undefined // Will be set by nodes if needed
+        };
+
+        try {
+            // Execute the flow using PocketFlow's automatic execution
+            // The flow will automatically follow the node chaining we set up
+            await this.flow.run(sharedState);
+
+            const finalResult = sharedState.finalResult || 'Agent completed but no result was generated.';
+            const actionCount = sharedState.actionHistory?.length || 0;
+            const stepCount = sharedState.currentStep || 0;
+
+            console.log(`\n🎉 PocketFlow ReAct Agent - Execution Complete`);
+            console.log(`📊 Actions taken: ${actionCount}/${maxSteps}`);
+            console.log(`⚡ Steps completed: ${stepCount}`);
+            console.log(`📄 Result length: ${finalResult.length} characters`);
+
+            return finalResult;
+
+        } catch (error) {
+            console.error('❌ PocketFlow Agent execution failed:', error);
+
+            // Return whatever partial results we have
+            const partialResult = sharedState.finalResult || this.generateErrorResponse(userRequest, error);
+            return partialResult;
+        }
+    }
+
+    /**
+     * Generate error response when agent execution fails
+     */
+    private generateErrorResponse(userRequest: string, error: any): string {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        return `I encountered an error while processing your request: "${userRequest}"\n\n` +
+               `Error: ${errorMessage}\n\n` +
+               `I apologize for the inconvenience. Please try rephrasing your request or contact support if the issue persists.`;
+    }
+
+    /**
+     * Get agent status and metrics
+     */
+    getMetrics(state: AgentSharedState): any {
+        return {
+            userRequest: state.userRequest,
+            currentStep: state.currentStep || 0,
+            maxSteps: state.maxSteps || 10,
+            toolsAvailable: state.availableTools?.length || 0,
+            actionsExecuted: state.actionHistory?.length || 0,
+            successfulActions: state.actionHistory?.filter(a => a.success).length || 0,
+            failedActions: state.actionHistory?.filter(a => !a.success).length || 0,
+            goalStatus: state.goalStatus || 'Unknown',
+            hasResult: !!state.finalResult
+        };
+    }
+}

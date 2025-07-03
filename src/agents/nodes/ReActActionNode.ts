@@ -1,4 +1,4 @@
-import { Node } from "../BaseNode";
+import { Node } from "pocketflow";
 import { AgentSharedState, MCPClient, ActionResult } from '../types';
 
 /**
@@ -117,7 +117,7 @@ export class ReActActionNode extends Node<AgentSharedState> {
      * Fallback method when all retries fail
      * Following PocketFlow execFallback pattern
      */
-    execFallback(prepData: { action: any; currentStep: number } | null, error: Error): string | null {
+    async execFallback(prepData: { action: any; currentStep: number } | null, error: Error): Promise<string | null> {
         if (!prepData) {
             return null;
         }
