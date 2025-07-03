@@ -168,7 +168,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `## Previous Actions:\n`;
             history.forEach((action, i) => {
                 prompt += `Step ${action.step}: Used ${action.tool} - ${action.success ? 'SUCCESS' : 'FAILED'}\n`;
-                prompt += `Result: ${action.result.substring(0, 200)}${action.result.length > 200 ? '...' : ''}\n\n`;
+                prompt += `Result: ${action.result}\n\n`;
             });
         }
         
