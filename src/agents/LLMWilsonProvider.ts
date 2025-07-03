@@ -16,29 +16,30 @@ export class LLMWilsonProvider implements LLMProvider {
 
     /**
      * Call LLM using FastAPI HTTP endpoint
+     * Note: Retry logic is handled by PocketFlow at the Node level
      */
     async callLLM(prompt: string, model?: string, system?: string): Promise<string> {
         const validModel = this.validateModel(model);
         console.log(`🔧 LLMWilsonProvider: Using model "${validModel}" via HTTP API`);
         
+        const requestBody: any = {
+            prompt: prompt,
+            json_mode: false
+        };
+        
+        // Add model if specified
+        if (validModel) {
+            requestBody.model = validModel;
+        }
+        
+        // Add system prompt as an option if provided
+        if (system) {
+            requestBody.options = ['-s', system];
+        }
+        
+        console.log(`🔧 LLMWilsonProvider: Calling ${this.baseUrl}/llm`);
+        
         try {
-            const requestBody: any = {
-                prompt: prompt,
-                json_mode: false
-            };
-            
-            // Add model if specified
-            if (validModel) {
-                requestBody.model = validModel;
-            }
-            
-            // Add system prompt as an option if provided
-            if (system) {
-                requestBody.options = ['-s', system];
-            }
-            
-            console.log(`🔧 LLMWilsonProvider: Calling ${this.baseUrl}/llm`);
-            
             const response = await fetch(`${this.baseUrl}/llm`, {
                 method: 'POST',
                 headers: {
@@ -47,12 +48,12 @@ export class LLMWilsonProvider implements LLMProvider {
                 },
                 body: JSON.stringify(requestBody)
             });
-            
+
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
-            
+
             const result = await response.json();
             console.log(`✅ LLMWilsonProvider: Got HTTP response`);
             
@@ -68,7 +69,7 @@ export class LLMWilsonProvider implements LLMProvider {
             
         } catch (error) {
             console.error('❌ LLMWilsonProvider HTTP call failed:', error);
-            throw new Error(`HTTP LLM call failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`Agent Mode LLM call failed: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 

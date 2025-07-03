@@ -2,6 +2,7 @@ import { LLMRequest, LLMResponse, LLMPluginSettings, MCPToolCall, MCPToolResult,
 import { MCPClientService } from './MCPClientService';
 import { AgenticLLMService } from './AgenticLLMService';
 import { parseCommand, getEffectiveMode } from '../utils/commandParser';
+import { withHttpRetry, createLLMError, RetryOptions } from '../utils/retryUtils';
 
 export class LLMService {
     private mcpClientService?: MCPClientService;
@@ -102,7 +103,7 @@ export class LLMService {
     }
 
     /**
-     * Send traditional LLM API request
+     * Send traditional LLM API request with robust retry logic
      */
     private async sendTraditionalRequest(request: LLMRequest): Promise<LLMResponse> {
         // Get available MCP tools if MCP is enabled
@@ -136,37 +137,59 @@ export class LLMService {
             console.log('📤 Request payload:', JSON.stringify(requestBody, null, 2));
         }
 
-        const response = await fetch(`${this.settings.llmConnectorApiUrl}/llm`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-API-Key': this.settings.llmConnectorApiKey
-            },
-            body: JSON.stringify(requestBody)
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const responseData = await response.json();
-
-        // Debug: Log response for YouTube requests
-        if (lowerPrompt.includes('youtube') || lowerPrompt.includes('video')) {
-            console.log('📥 Response data:', JSON.stringify(responseData, null, 2));
-        }
-
-        // Note: Tool calling removed since backend doesn't support it
-        // All tool-based requests should use agentic mode instead
-        if (lowerPrompt.includes('youtube') || /youtube\.com|youtu\.be/.test(lowerPrompt)) {
-            console.warn('⚠️ YouTube request processed without tools - use agentic mode for tool support');
-        }
-
-        return {
-            result: responseData.result,
-            conversationId: responseData.conversation_id
+        // Configure retry options for LLM API calls
+        const retryOptions: Partial<RetryOptions> = {
+            maxRetries: 3,
+            baseWaitTime: 1000,
+            maxWaitTime: 10000,
+            timeoutMs: 60000,
+            retryOnStatus: [408, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524]
         };
+
+        // Use retry logic for the HTTP request
+        try {
+            const retryResult = await withHttpRetry(
+                `${this.settings.llmConnectorApiUrl}/llm`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-API-Key': this.settings.llmConnectorApiKey
+                    },
+                    body: JSON.stringify(requestBody)
+                },
+                retryOptions,
+                'Chat Mode LLM API call'
+            );
+
+            if (!retryResult.success || !retryResult.result) {
+                throw createLLMError(retryResult.error, 'Chat Mode LLM API call');
+            }
+
+            const response = retryResult.result;
+            const responseData = await response.json();
+
+            // Debug: Log response for YouTube requests
+            if (lowerPrompt.includes('youtube') || lowerPrompt.includes('video')) {
+                console.log('📥 Response data:', JSON.stringify(responseData, null, 2));
+            }
+
+            // Note: Tool calling removed since backend doesn't support it
+            // All tool-based requests should use agentic mode instead
+            if (lowerPrompt.includes('youtube') || /youtube\.com|youtu\.be/.test(lowerPrompt)) {
+                console.warn('⚠️ YouTube request processed without tools - use agentic mode for tool support');
+            }
+
+            return {
+                result: responseData.result,
+                conversationId: responseData.conversation_id
+            };
+
+        } catch (error) {
+            console.error('❌ Chat Mode LLM API call failed after retries:', error);
+            throw createLLMError(error, 'Chat Mode LLM API call');
+        }
     }
 
     // Removed: shouldUseAgenticSystem() and isComplexRequest() 
