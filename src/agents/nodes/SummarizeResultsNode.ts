@@ -1,54 +1,74 @@
+import { Node } from "../BaseNode";
 import { AgentSharedState, LLMProvider } from '../types';
 
 /**
  * Node for summarizing and finalizing ReAct agent results
- * Following PocketFlow TypeScript SDK patterns
+ * Following PocketFlow TypeScript SDK patterns with built-in retry logic
  */
-export class SummarizeResultsNode {
-    constructor(private llmProvider: LLMProvider) {}
+export class SummarizeResultsNode extends Node<AgentSharedState> {
+    constructor(
+        private llmProvider: LLMProvider,
+        maxRetries: number = 2,
+        waitTime: number = 1
+    ) {
+        super(maxRetries, waitTime);
+    }
 
-    async execute(state: AgentSharedState): Promise<AgentSharedState> {
+    async prep(shared: AgentSharedState): Promise<string> {
         console.log('📋 Summarizing results...');
+        return this.buildSummaryPrompt(shared);
+    }
+
+    async exec(prompt: string): Promise<string> {
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Summarization timeout after 20 seconds')), 20000);
+        });
         
-        try {
-            const prompt = this.buildSummaryPrompt(state);
-            console.log('🔧 SummarizeResultsNode: Starting LLM call...');
-            
-            // Add timeout to prevent hanging
-            const timeoutPromise = new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error('Summarization timeout after 20 seconds')), 20000);
-            });
-            
-            const summaryPromise = this.llmProvider.callLLM(
-                prompt,
-                state.modelConfig?.summarization,
-                'You are a helpful assistant that provides clear, concise summaries based on the provided information.'
-            );
-            
-            const summary = await Promise.race([summaryPromise, timeoutPromise]);
-            console.log('✅ SummarizeResultsNode: Got LLM response');
-            
-            console.log(`✅ Summary generated (${summary.length} chars)`);
-            console.log(`📄 Summary preview: ${summary.substring(0, 200)}...`);
-            
-            return {
-                ...state,
-                finalResult: summary
-            };
-            
-        } catch (error) {
-            console.error('❌ Summarization failed:', error);
-            console.log('🔄 Using fallback summary generation...');
-            
-            // Fallback summary
-            const fallbackSummary = this.generateFallbackSummary(state);
-            console.log(`✅ Fallback summary generated (${fallbackSummary.length} chars)`);
-            
-            return {
-                ...state,
-                finalResult: fallbackSummary
-            };
+        const summaryPromise = this.llmProvider.callLLM(
+            prompt,
+            undefined, // Use default model config
+            'You are a helpful assistant that provides clear, concise summaries based on the provided information.'
+        );
+        
+        const summary = await Promise.race([summaryPromise, timeoutPromise]);
+        
+        // Validate the summary
+        if (!summary || summary.trim().length < 10) {
+            throw new Error('Summary is too short or empty');
         }
+        
+        console.log(`✅ Summary generated (${summary.length} chars)`);
+        console.log(`📄 Summary preview: ${summary.substring(0, 200)}...`);
+        
+        return summary;
+    }
+
+    async post(
+        shared: AgentSharedState,
+        prompt: string,
+        summary: string
+    ): Promise<string | undefined> {
+        // Update shared state with final result
+        Object.assign(shared, {
+            finalResult: summary
+        });
+        
+        return undefined; // End of flow
+    }
+
+    /**
+     * Fallback method when all retries fail
+     * Following PocketFlow execFallback pattern
+     */
+    execFallback(prompt: string, error: Error): string {
+        console.log('🔄 Using summarization fallback...');
+        
+        // Generate fallback summary from prompt content
+        const fallbackSummary = this.generateFallbackSummaryFromPrompt(prompt);
+        console.log(`✅ Fallback summary generated (${fallbackSummary.length} chars)`);
+        
+        return fallbackSummary;
     }
 
     private buildSummaryPrompt(state: AgentSharedState): string {
@@ -88,34 +108,32 @@ export class SummarizeResultsNode {
         return prompt;
     }
 
-    private generateFallbackSummary(state: AgentSharedState): string {
-        const userRequest = state.userRequest || 'your request';
-        const actionHistory = state.actionHistory || [];
-        const totalSteps = state.currentStep || 0;
+    private generateFallbackSummaryFromPrompt(prompt: string): string {
+        // Extract user request from prompt
+        const userRequestMatch = prompt.match(/\*\*Original User Request:\*\* (.+)/);
+        const userRequest = userRequestMatch ? userRequestMatch[1] : 'your request';
+        
+        // Extract action count
+        const actionMatch = prompt.match(/## Actions Taken \((\d+) actions/);
+        const actionCount = actionMatch ? parseInt(actionMatch[1]) : 0;
         
         let summary = `I attempted to help with ${userRequest}.\n\n`;
         
-        if (actionHistory.length > 0) {
-            const successfulActions = actionHistory.filter(a => a.success);
-            const failedActions = actionHistory.filter(a => !a.success);
+        if (actionCount > 0) {
+            summary += `**Actions taken:** ${actionCount} actions were performed to gather information.\n\n`;
             
-            summary += `**Actions taken:** ${actionHistory.length} actions in ${totalSteps} steps\n`;
-            summary += `- ✅ Successful: ${successfulActions.length}\n`;
-            summary += `- ❌ Failed: ${failedActions.length}\n\n`;
-            
-            if (successfulActions.length > 0) {
-                summary += `**Results obtained:**\n`;
-                successfulActions.forEach(action => {
-                    summary += `- ${action.tool}: ${action.result.substring(0, 100)}${action.result.length > 100 ? '...' : ''}\n`;
-                });
+            // Check for success/failure indicators in prompt
+            if (prompt.includes('✅ SUCCESS')) {
+                summary += `Some tools were successfully executed to gather relevant information.\n`;
             }
-            
-            if (failedActions.length > 0) {
-                summary += `\n**Note:** Some actions failed, but I've provided the best response possible with available information.\n`;
+            if (prompt.includes('❌ FAILED')) {
+                summary += `Some actions failed, but I've provided the best response possible with available information.\n`;
             }
         } else {
             summary += `No specific tools were needed for this request. I've provided a response based on available knowledge.\n`;
         }
+        
+        summary += `\n*Note: Automatic summarization failed, so this is a simplified response based on the available information.*`;
         
         return summary;
     }

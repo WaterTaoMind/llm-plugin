@@ -556,37 +556,122 @@ export class StyleManager {
             }
 
             .llm-mode-selector {
-                display: flex;
-                border: 1px solid var(--background-modifier-border);
-                border-radius: 4px;
-                overflow: hidden;
-                background: var(--background-secondary);
+                position: relative;
+                display: inline-block;
             }
 
-            .llm-mode-button {
-                padding: 6px 10px;
+            .llm-mode-current {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                background: var(--background-primary);
+                color: var(--text-normal);
+                cursor: pointer;
+                transition: all 0.15s ease;
+                font-size: 13px;
+                font-weight: 400;
+                min-width: 80px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .llm-mode-current:hover {
+                background: var(--background-modifier-hover);
+                border-color: var(--background-modifier-border-hover);
+            }
+
+            .llm-mode-current[aria-expanded="true"] {
+                border-color: var(--interactive-accent);
+                box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+            }
+
+            .llm-mode-dropdown {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                z-index: 1000;
+                margin-top: 4px;
+                background: var(--background-primary);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                overflow: hidden;
+            }
+
+            .llm-mode-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
                 border: none;
                 background: transparent;
-                color: var(--text-muted);
-                font-size: 16px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                border-right: 1px solid var(--background-modifier-border);
-            }
-
-            .llm-mode-button:last-child {
-                border-right: none;
-            }
-
-            .llm-mode-button:hover {
-                background: var(--background-modifier-hover);
                 color: var(--text-normal);
+                cursor: pointer;
+                transition: all 0.15s ease;
+                font-size: 13px;
+                font-weight: 400;
+                text-align: left;
+                width: 100%;
             }
 
-            .llm-mode-button.active {
+            .llm-mode-option:hover {
                 background: var(--interactive-accent);
                 color: var(--text-on-accent);
-                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            }
+
+            .llm-mode-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+
+            .llm-mode-icon svg {
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 1.5;
+            }
+
+            .llm-mode-label {
+                font-size: 13px;
+                font-weight: 400;
+                color: inherit;
+                white-space: nowrap;
+            }
+
+            .llm-mode-arrow {
+                margin-left: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0.6;
+            }
+
+            .llm-mode-arrow svg {
+                width: 12px;
+                height: 12px;
+                stroke: currentColor;
+                transition: transform 0.2s ease;
+            }
+
+            .llm-mode-current[aria-expanded="true"] .llm-mode-arrow svg {
+                transform: rotate(180deg);
+            }
+
+            /* Dark theme optimizations */
+            .theme-dark .llm-mode-current {
+                background: var(--background-primary-alt);
+                border-color: var(--background-modifier-border-hover);
+            }
+
+            .theme-dark .llm-mode-dropdown {
+                background: var(--background-primary-alt);
+                border-color: var(--background-modifier-border-hover);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
             }
 
             .llm-model-selector {

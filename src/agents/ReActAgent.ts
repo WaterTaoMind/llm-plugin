@@ -8,6 +8,8 @@ import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
  * TypeScript ReAct Agent implementation
  * Following PocketFlow TypeScript SDK patterns for Node-based workflows
  * 
+ * Uses proper PocketFlow Node classes with built-in retry logic
+ * Custom orchestration for ReAct loop control flow
  * Replaces the Python subprocess approach with native TypeScript integration
  */
 export class ReActAgent {
@@ -19,17 +21,21 @@ export class ReActAgent {
     constructor(
         private llmProvider: LLMProvider,
         private mcpClient: MCPClient,
-        private modelConfig: ModelConfig
+        private modelConfig: ModelConfig,
+        // Retry configuration options
+        reasoningRetries: number = 3,
+        actionRetries: number = 3,
+        summarizeRetries: number = 2
     ) {
-        // Initialize nodes following PocketFlow patterns
+        // Initialize PocketFlow nodes with built-in retry logic
         this.discoverToolsNode = new DiscoverToolsNode(mcpClient);
-        this.reasoningNode = new ReActReasoningNode(llmProvider);
-        this.actionNode = new ReActActionNode(mcpClient);
-        this.summarizeNode = new SummarizeResultsNode(llmProvider);
+        this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
+        this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
+        this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
     }
 
     /**
-     * Execute the ReAct agent workflow
+     * Execute the ReAct agent workflow using PocketFlow node patterns
      * 
      * @param userRequest The user's request to process
      * @param maxSteps Maximum number of reasoning steps (default: 10)
@@ -41,7 +47,7 @@ export class ReActAgent {
         console.log(`🔢 Max Steps: ${maxSteps}`);
         
         // Initialize shared state
-        let state: AgentSharedState = {
+        const state: AgentSharedState = {
             userRequest,
             maxSteps,
             currentStep: 0,
@@ -50,17 +56,17 @@ export class ReActAgent {
         };
 
         try {
-            // Step 1: Discover available tools
+            // Step 1: Discover available tools using PocketFlow node
             console.log('\n🔍 Phase 1: Tool Discovery');
-            state = await this.discoverToolsNode.execute(state);
+            await this.runNode(this.discoverToolsNode, state);
             
-            // Step 2: ReAct loop (Reasoning + Acting)
+            // Step 2: ReAct loop (Reasoning + Acting) using PocketFlow nodes
             console.log('\n🤔 Phase 2: ReAct Loop');
-            state = await this.executeReActLoop(state);
+            await this.executeReActLoop(state);
             
-            // Step 3: Summarize results
+            // Step 3: Summarize results using PocketFlow node
             console.log('\n📋 Phase 3: Result Summarization');
-            state = await this.summarizeNode.execute(state);
+            await this.runNode(this.summarizeNode, state);
             
             const finalResult = state.finalResult || 'Agent completed but no result was generated.';
             const actionCount = state.actionHistory?.length || 0;
@@ -83,15 +89,23 @@ export class ReActAgent {
     }
 
     /**
-     * Execute the ReAct reasoning and action loop
+     * Run a PocketFlow-style node using our BaseNode implementation
      */
-    private async executeReActLoop(state: AgentSharedState): Promise<AgentSharedState> {
+    private async runNode(node: any, state: AgentSharedState): Promise<void> {
+        // Use the BaseNode's built-in run method that handles prep/exec/post with retry
+        await node.run(state);
+    }
+
+    /**
+     * Execute the ReAct reasoning and action loop using PocketFlow nodes
+     */
+    private async executeReActLoop(state: AgentSharedState): Promise<void> {
         const maxSteps = state.maxSteps || 10;
         
         while ((state.currentStep || 0) < maxSteps) {
-            // Reasoning step
+            // Reasoning step using PocketFlow node
             console.log(`\n🤔 Reasoning Step ${(state.currentStep || 0) + 1}/${maxSteps}`);
-            state = await this.reasoningNode.execute(state);
+            await this.runNode(this.reasoningNode, state);
             
             // Check if agent decided to complete
             if (!state.nextAction) {
@@ -99,9 +113,9 @@ export class ReActAgent {
                 break;
             }
             
-            // Action step
+            // Action step using PocketFlow node
             console.log(`🛠️ Action Step ${state.currentStep}/${maxSteps}`);
-            state = await this.actionNode.execute(state);
+            await this.runNode(this.actionNode, state);
             
             // Brief pause to avoid overwhelming the system
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -111,8 +125,6 @@ export class ReActAgent {
             console.log('⏰ Reached maximum steps - completing with current results');
             state.goalStatus = `Completed after reaching maximum ${maxSteps} steps`;
         }
-        
-        return state;
     }
 
     /**

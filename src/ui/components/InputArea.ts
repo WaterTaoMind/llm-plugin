@@ -286,44 +286,120 @@ export class InputArea {
     }
 
     private createModeSelector(container: HTMLElement) {
-        // Create compact mode toggle container
+        // Create dropdown-style mode selector container
         this.modeSelector = container.createDiv({ cls: 'llm-mode-selector' });
         
-        // Create toggle buttons
-        const chatButton = this.modeSelector.createEl('button', { 
-            cls: 'llm-mode-button llm-mode-chat',
+        // Create main button that shows current selection
+        const mainButton = this.modeSelector.createEl('button', { 
+            cls: 'llm-mode-current',
+            attr: { 'aria-expanded': 'false' }
+        });
+        
+        const currentIcon = mainButton.createDiv({ cls: 'llm-mode-icon' });
+        const currentLabel = mainButton.createDiv({ cls: 'llm-mode-label' });
+        const dropdownArrow = mainButton.createDiv({ cls: 'llm-mode-arrow' });
+        dropdownArrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6,9 12,15 18,9"></polyline>
+        </svg>`;
+        
+        // Create dropdown options container
+        const dropdown = this.modeSelector.createDiv({ cls: 'llm-mode-dropdown' });
+        dropdown.style.display = 'none';
+        
+        // Create Chat mode option
+        const chatOption = dropdown.createEl('button', { 
+            cls: 'llm-mode-option',
             attr: { 'data-mode': ProcessingMode.CHAT }
         });
-        chatButton.innerHTML = '💬';
-        chatButton.title = 'Chat Mode - Direct LLM processing';
+        const chatIcon = chatOption.createDiv({ cls: 'llm-mode-icon' });
+        chatIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>`;
+        chatOption.createDiv({ cls: 'llm-mode-label', text: 'Chat' });
         
-        const agentButton = this.modeSelector.createEl('button', { 
-            cls: 'llm-mode-button llm-mode-agent',
+        // Create Agent mode option
+        const agentOption = dropdown.createEl('button', { 
+            cls: 'llm-mode-option',
             attr: { 'data-mode': ProcessingMode.AGENT }
         });
-        agentButton.innerHTML = '🤖';
-        agentButton.title = 'Agent Mode - ReAct workflow with tools';
+        const agentIcon = agentOption.createDiv({ cls: 'llm-mode-icon' });
+        agentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+        </svg>`;
+        agentOption.createDiv({ cls: 'llm-mode-label', text: 'Agent' });
         
-        // Set initial active state
+        // Set initial state
         this.updateModeSelector();
         
         // Add event listeners
-        chatButton.addEventListener('click', () => this.setMode(ProcessingMode.CHAT));
-        agentButton.addEventListener('click', () => this.setMode(ProcessingMode.AGENT));
+        mainButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleDropdown();
+        });
+        
+        chatOption.addEventListener('click', () => {
+            this.setMode(ProcessingMode.CHAT);
+            this.closeDropdown();
+        });
+        
+        agentOption.addEventListener('click', () => {
+            this.setMode(ProcessingMode.AGENT);
+            this.closeDropdown();
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            this.closeDropdown();
+        });
     }
 
     private updateModeSelector() {
         if (!this.modeSelector) return; // Guard against undefined modeSelector
         
-        const buttons = this.modeSelector.querySelectorAll('.llm-mode-button');
-        buttons.forEach(button => {
-            const buttonMode = button.getAttribute('data-mode');
-            if (buttonMode === this.currentMode) {
-                button.addClass('active');
+        const currentButton = this.modeSelector.querySelector('.llm-mode-current');
+        const currentIcon = currentButton?.querySelector('.llm-mode-icon');
+        const currentLabel = currentButton?.querySelector('.llm-mode-label');
+        
+        if (currentIcon && currentLabel) {
+            if (this.currentMode === ProcessingMode.CHAT) {
+                currentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>`;
+                currentLabel.textContent = 'Chat';
             } else {
-                button.removeClass('active');
+                currentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+                </svg>`;
+                currentLabel.textContent = 'Agent';
             }
-        });
+        }
+    }
+
+    private toggleDropdown() {
+        const dropdown = this.modeSelector?.querySelector('.llm-mode-dropdown') as HTMLElement;
+        const mainButton = this.modeSelector?.querySelector('.llm-mode-current');
+        
+        if (dropdown && mainButton) {
+            const isOpen = dropdown.style.display !== 'none';
+            if (isOpen) {
+                this.closeDropdown();
+            } else {
+                dropdown.style.display = 'block';
+                mainButton.setAttribute('aria-expanded', 'true');
+            }
+        }
+    }
+
+    private closeDropdown() {
+        const dropdown = this.modeSelector?.querySelector('.llm-mode-dropdown') as HTMLElement;
+        const mainButton = this.modeSelector?.querySelector('.llm-mode-current');
+        
+        if (dropdown && mainButton) {
+            dropdown.style.display = 'none';
+            mainButton.setAttribute('aria-expanded', 'false');
+        }
     }
 
     private setMode(mode: ProcessingMode) {
