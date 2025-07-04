@@ -30,18 +30,11 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         const prompt = this.buildReasoningPrompt(state, currentStep);
         
-        // Add timeout to prevent hanging
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Reasoning timeout after 30 seconds')), 30000);
-        });
-        
-        const reasoningPromise = this.llmProvider.callLLMWithSchema(
+        const response = await this.llmProvider.callLLMWithSchema(
             prompt,
             this.getReasoningSchema(),
             state.modelConfig?.reasoning
         );
-        
-        const response = await Promise.race([reasoningPromise, timeoutPromise]);
         
         const reasoning: ReasoningResponse = typeof response === 'string' 
             ? JSON.parse(response) 
@@ -217,7 +210,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                         "tool": {"type": "string"},
                         "parameters": {"type": "object"},
                         "justification": {"type": "string"}
-                    }
+                    },
+                    "required": ["server", "tool", "parameters", "justification"]
                 }
             },
             "required": ["reasoning", "decision", "goalStatus"]

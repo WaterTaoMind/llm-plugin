@@ -38,25 +38,12 @@ export class ReActActionNode extends Node<AgentSharedState> {
         
         const { action } = prepData;
         
-        // Determine timeout based on tool type
-        const isYouTubeOperation = action.tool.includes('youtube') || 
-                                 action.tool.includes('transcript') || 
-                                 action.tool.includes('video');
-        const timeout = isYouTubeOperation ? 360000 : 30000; // 6 min for YouTube, 30s for others
-        
-        // Create timeout promise
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error(`Tool execution timeout after ${timeout/1000}s`)), timeout);
-        });
-        
-        // Execute the tool via MCP client with timeout
-        const toolPromise = this.mcpClient.callTool(
+        // Execute the tool via MCP client
+        const result = await this.mcpClient.callTool(
             action.server,
             action.tool,
             action.parameters
         );
-        
-        const result = await Promise.race([toolPromise, timeoutPromise]);
         
         // Validate result
         if (typeof result !== 'string' || result.trim().length === 0) {

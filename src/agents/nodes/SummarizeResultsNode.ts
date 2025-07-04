@@ -20,18 +20,11 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
     }
 
     async exec(prompt: string): Promise<string> {
-        // Add timeout to prevent hanging
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Summarization timeout after 20 seconds')), 20000);
-        });
-        
-        const summaryPromise = this.llmProvider.callLLM(
+        const summary = await this.llmProvider.callLLM(
             prompt,
             undefined, // Use default model config
             'You are a helpful assistant that provides clear, concise summaries based on the provided information.'
         );
-        
-        const summary = await Promise.race([summaryPromise, timeoutPromise]);
         
         // Validate the summary
         if (!summary || summary.trim().length < 10) {
