@@ -18,9 +18,11 @@ export class MCPServerManager {
 
     private reconnectTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private reconnectAttempts: Map<string, number> = new Map();
+    private failureCount: Map<string, number> = new Map();
     private readonly maxReconnectAttempts = 5;
     private readonly baseReconnectDelay = 2000; // 2 seconds base delay
     private readonly maxReconnectDelay = 30000; // 30 seconds max delay
+    private readonly maxFailuresBeforeDisable = 10; // Disable after 10 consecutive failures
 
     /**
      * Connect to an MCP server
@@ -31,6 +33,12 @@ export class MCPServerManager {
         try {
             // Disconnect existing connection if any
             await this.disconnectServer(serverId);
+
+            // Check if server should be temporarily disabled due to repeated failures
+            if (this.shouldSkipServer(serverId)) {
+                console.warn(`⏭️ Skipping server ${config.name} - temporarily disabled due to repeated failures`);
+                throw new Error(`Server ${config.name} temporarily disabled due to repeated failures`);
+            }
 
             // Create transport with enhanced environment and stdio filtering
             const enhancedEnv = {
@@ -124,11 +132,14 @@ export class MCPServerManager {
             });
 
             console.log(`Connected to MCP server: ${config.name}`);
+            this.recordSuccess(serverId); // Reset failure count on successful connection
             return connection;
 
         } catch (error) {
             const errorMessage = this.getErrorMessage(error);
             console.error(`Failed to connect to MCP server ${config.name}:`, errorMessage);
+
+            this.recordFailure(serverId); // Track failure for potential disabling
 
             const connection: MCPServerConnection = {
                 id: serverId,
@@ -146,8 +157,8 @@ export class MCPServerManager {
                 status: connection
             });
 
-            // Schedule reconnection if enabled
-            if (config.autoReconnect) {
+            // Only schedule reconnection if server isn't disabled and auto-reconnect is enabled
+            if (config.autoReconnect && !this.shouldSkipServer(serverId)) {
                 this.scheduleReconnection(config);
             }
 
@@ -510,5 +521,40 @@ export class MCPServerManager {
             clearTimeout(timeout);
             this.reconnectTimeouts.delete(serverId);
         }
+    }
+
+    /**
+     * Check if server should be skipped due to repeated failures
+     */
+    private shouldSkipServer(serverId: string): boolean {
+        const failures = this.failureCount.get(serverId) || 0;
+        return failures >= this.maxFailuresBeforeDisable;
+    }
+
+    /**
+     * Record connection failure for a server
+     */
+    private recordFailure(serverId: string): void {
+        const current = this.failureCount.get(serverId) || 0;
+        this.failureCount.set(serverId, current + 1);
+        
+        if (current + 1 >= this.maxFailuresBeforeDisable) {
+            console.warn(`🚨 Server ${serverId} disabled after ${this.maxFailuresBeforeDisable} consecutive failures`);
+        }
+    }
+
+    /**
+     * Record successful connection for a server (resets failure count)
+     */
+    private recordSuccess(serverId: string): void {
+        this.failureCount.delete(serverId);
+    }
+
+    /**
+     * Re-enable a temporarily disabled server
+     */
+    enableServer(serverId: string): void {
+        this.failureCount.delete(serverId);
+        console.log(`✅ Server ${serverId} re-enabled`);
     }
 }

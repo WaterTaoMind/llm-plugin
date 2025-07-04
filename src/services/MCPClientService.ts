@@ -301,6 +301,33 @@ export class MCPClientService {
     }
 
     /**
+     * Re-enable a disabled server and attempt connection
+     */
+    async enableServer(serverId: string): Promise<MCPServerConnection> {
+        const serverConfig = this.settings.mcpServers.find(s => s.id === serverId);
+        if (!serverConfig) {
+            throw new Error(`Server configuration not found for ${serverId}`);
+        }
+
+        // Re-enable the server (reset failure count)
+        this.serverManager.enableServer(serverId);
+
+        // Reset reconnection attempts
+        this.serverManager.resetReconnectionAttempts(serverId);
+
+        // Attempt connection
+        const connection = await this.connectToServer(serverConfig);
+
+        if (connection.status === 'connected') {
+            new Notice(`Successfully enabled and connected to ${connection.name}`);
+        } else {
+            new Notice(`Failed to connect to ${connection.name}: ${connection.error}`, 5000);
+        }
+
+        return connection;
+    }
+
+    /**
      * Update settings
      */
     updateSettings(settings: LLMPluginSettings): void {

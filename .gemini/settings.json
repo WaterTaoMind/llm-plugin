@@ -13,7 +13,7 @@
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
-        "/Users/zhonghaoning1/Work/tools"
+        "/Users/zhonghaoning1/Work/mcp-files"
       ]
     },
     "commands": {

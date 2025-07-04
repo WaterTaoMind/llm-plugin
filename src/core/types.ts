@@ -23,6 +23,7 @@ export interface MCPServerConfig {
     enabled: boolean;
     autoReconnect: boolean;
     description?: string;
+    httpUrl?: string; // Optional HTTP URL for servers that support HTTP transport
 }
 
 export interface LLMPluginSettings {
