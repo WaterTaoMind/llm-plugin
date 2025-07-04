@@ -150,6 +150,11 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `## Available Tools:\n`;
             tools.forEach(tool => {
                 prompt += `- **${tool.name}** (${tool.server}): ${tool.description}\n`;
+                // Include parameter schema for proper usage
+                if (tool.inputSchema && tool.inputSchema.properties) {
+                    const params = Object.keys(tool.inputSchema.properties);
+                    prompt += `  Parameters: {${params.map(p => `"${p}"`).join(', ')}}\n`;
+                }
             });
             prompt += `\n`;
         } else {
