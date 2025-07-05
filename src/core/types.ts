@@ -46,6 +46,8 @@ export interface LLMPluginSettings {
     // Processing Mode Settings
     defaultMode: ProcessingMode;
     showModeSelector: boolean;
+    // Agent Settings
+    agentMaxSteps: number;
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
@@ -67,7 +69,9 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     mcpShowToolExecution: true,
     // Processing Mode Defaults
     defaultMode: ProcessingMode.CHAT,
-    showModeSelector: true
+    showModeSelector: true,
+    // Agent Defaults
+    agentMaxSteps: 20
 };
 
 export interface FileWithPath extends File {

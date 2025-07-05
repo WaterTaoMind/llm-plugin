@@ -135,28 +135,11 @@ export class AgenticLLMService {
     }
 
     /**
-     * Determine maximum steps based on request complexity
+     * Get maximum steps from settings
      */
     private getMaxStepsForRequest(request: LLMRequest): number {
-        const prompt = request.prompt.toLowerCase();
-        
-        // YouTube URLs may need multiple steps (transcript + summarization)
-        if (prompt.includes('youtube.com') || prompt.includes('youtu.be')) {
-            return 5;
-        }
-        
-        // File operations might need multiple steps
-        if (prompt.includes('file') || prompt.includes('document')) {
-            return 7;
-        }
-        
-        // Research requests might need more steps
-        if (prompt.includes('research') || prompt.includes('analyze') || prompt.includes('investigate')) {
-            return 8;
-        }
-        
-        // Default to moderate number of steps
-        return 5;
+        // Use configurable agentMaxSteps from settings
+        return this.settings.agentMaxSteps || 20;
     }
 
     /**

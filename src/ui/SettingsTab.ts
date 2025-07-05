@@ -131,6 +131,18 @@ export class LLMSettingTab extends PluginSettingTab {
                     this.display(); // Refresh to update UI
                 }));
 
+        new Setting(containerEl)
+            .setName('Agent Maximum Steps')
+            .setDesc('Maximum number of reasoning steps for Agent mode (default: 20)')
+            .addText(text => text
+                .setPlaceholder('20')
+                .setValue(String(this.plugin.settings.agentMaxSteps))
+                .onChange(async (value) => {
+                    const steps = parseInt(value) || 20;
+                    this.plugin.settings.agentMaxSteps = steps;
+                    await this.plugin.saveSettings();
+                }));
+
         // Command Help
         if (this.plugin.settings.showModeSelector) {
             const helpDiv = containerEl.createDiv({cls: 'setting-item-description'});
