@@ -193,26 +193,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- "goalStatus": Brief status of progress toward the goal\n`;
         prompt += `- "action": If continuing, specify the tool and parameters\n\n`;
         
-        prompt += `## Completion Decision Framework:\n`;
-        prompt += `Choose "complete" ONLY when:\n`;
-        prompt += `- ALL user requirements have been successfully fulfilled\n`;
-        prompt += `- Final deliverable has been created/saved/provided to the user\n`;
-        prompt += `- No additional steps are needed to satisfy the original request\n\n`;
-        
-        prompt += `Choose "continue" when:\n`;
-        prompt += `- Any part of the user request remains unfinished\n`;
-        prompt += `- Additional tools or actions are needed to complete the goal\n`;
-        prompt += `- Progress has been made but the final objective is not yet achieved\n\n`;
-        
-        prompt += `When capabilities/tools are missing:\n`;
-        prompt += `- Clearly state what cannot be accomplished and why\n`;
-        prompt += `- Summarize what WAS successfully completed\n`;
-        prompt += `- Be honest about limitations rather than implying success\n`;
-        prompt += `- Only complete if genuinely no further progress is possible\n\n`;
-        
         prompt += `Guidelines:\n`;
         prompt += `- For the first step, focus on planning the complete workflow before taking action\n`;
-        prompt += `- Before choosing "complete", verify each requirement from the original request\n`;
         prompt += `- Be efficient - don't use tools unnecessarily\n`;
         prompt += `- For multi-step tasks, ensure each step builds toward the final deliverable\n`;
         
