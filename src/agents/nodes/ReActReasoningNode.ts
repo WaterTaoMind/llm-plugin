@@ -147,9 +147,9 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         // Add available tools
         if (tools.length > 0) {
-            prompt += `## Available Tools:\n`;
+            prompt += `## Available Tools (IMPORTANT: Use exact server names shown):\n`;
             tools.forEach(tool => {
-                prompt += `- **${tool.name}** (${tool.server}): ${tool.description}\n`;
+                prompt += `- **${tool.name}** (SERVER: ${tool.server}): ${tool.description}\n`;
                 // Include parameter schema for proper usage
                 if (tool.inputSchema && tool.inputSchema.properties) {
                     const params = Object.keys(tool.inputSchema.properties);
@@ -174,6 +174,18 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- Step ${currentStep} of ${maxSteps}\n`;
         prompt += `- User Request: ${state.userRequest}\n\n`;
         
+        // Add task decomposition for first step
+        if (currentStep === 1 && (history.length === 0)) {
+            prompt += `## Initial Task Decomposition:\n`;
+            prompt += `Before taking any actions, first analyze the user request and break it down:\n`;
+            prompt += `1. What is the complete goal the user wants to achieve?\n`;
+            prompt += `2. What are the sequential steps needed to accomplish this goal?\n`;
+            prompt += `3. Which tools/capabilities will be required for each step?\n`;
+            prompt += `4. What will the final deliverable look like?\n\n`;
+            
+            prompt += `For complex multi-step tasks, ensure you plan the complete workflow before starting.\n\n`;
+        }
+        
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;
         prompt += `- "reasoning": Your step-by-step thinking process\n`;
@@ -181,11 +193,28 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- "goalStatus": Brief status of progress toward the goal\n`;
         prompt += `- "action": If continuing, specify the tool and parameters\n\n`;
         
+        prompt += `## Completion Decision Framework:\n`;
+        prompt += `Choose "complete" ONLY when:\n`;
+        prompt += `- ALL user requirements have been successfully fulfilled\n`;
+        prompt += `- Final deliverable has been created/saved/provided to the user\n`;
+        prompt += `- No additional steps are needed to satisfy the original request\n\n`;
+        
+        prompt += `Choose "continue" when:\n`;
+        prompt += `- Any part of the user request remains unfinished\n`;
+        prompt += `- Additional tools or actions are needed to complete the goal\n`;
+        prompt += `- Progress has been made but the final objective is not yet achieved\n\n`;
+        
+        prompt += `When capabilities/tools are missing:\n`;
+        prompt += `- Clearly state what cannot be accomplished and why\n`;
+        prompt += `- Summarize what WAS successfully completed\n`;
+        prompt += `- Be honest about limitations rather than implying success\n`;
+        prompt += `- Only complete if genuinely no further progress is possible\n\n`;
+        
         prompt += `Guidelines:\n`;
-        prompt += `- If you have sufficient information to answer the user's request, choose "complete"\n`;
-        prompt += `- If you need more information or should use a tool, choose "continue" and specify the action\n`;
+        prompt += `- For the first step, focus on planning the complete workflow before taking action\n`;
+        prompt += `- Before choosing "complete", verify each requirement from the original request\n`;
         prompt += `- Be efficient - don't use tools unnecessarily\n`;
-        prompt += `- If no relevant tools are available, provide the best response you can and complete\n`;
+        prompt += `- For multi-step tasks, ensure each step builds toward the final deliverable\n`;
         
         return prompt;
     }
