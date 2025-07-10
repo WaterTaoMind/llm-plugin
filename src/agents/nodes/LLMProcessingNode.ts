@@ -97,9 +97,9 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
             historyId: historyId
         });
         
-        // Clear the LLM request and update step counter
+        // Clear the LLM request
         shared.nextLLMRequest = undefined;
-        shared.currentStep = (shared.currentStep || 0) + 1;
+        // Note: currentStep increment handled by ReasoningNode
         
         console.log(`📋 LLM Processing result added to action history with ID: ${historyId}`);
         
@@ -107,15 +107,40 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
     }
 
     /**
-     * Retrieve content from action history using historyId reference
+     * Retrieve content from action history using historyId reference(s)
      * This enables precise content selection for LLM processing
+     * Supports both single historyId and comma-separated multiple historyIds
      */
     private getContentFromHistory(history: ActionResult[], historyId: string): string {
         if (!historyId) {
             throw new Error('No input history ID provided for LLM processing');
         }
         
-        // Find the specific history entry
+        // Handle comma-separated multiple history IDs
+        if (historyId.includes(',')) {
+            const historyIds = historyId.split(',').map(id => id.trim());
+            console.log(`📋 Processing multiple history IDs: ${historyIds.join(', ')}`);
+            
+            const combinedContent: string[] = [];
+            
+            for (const id of historyIds) {
+                const entry = history.find(h => h.historyId === id);
+                
+                if (entry) {
+                    combinedContent.push(`=== Content from ${id} ===\n${entry.result}`);
+                    console.log(`✅ Found content for ID: ${id} (${entry.result.length} chars)`);
+                } else {
+                    console.log(`⚠️ History entry not found: ${id}`);
+                    combinedContent.push(`=== Content from ${id} ===\n[Content not found]`);
+                }
+            }
+            
+            const combined = combinedContent.join('\n\n');
+            console.log(`📄 Combined content: ${combined.length} characters from ${historyIds.length} entries`);
+            return combined;
+        }
+        
+        // Handle single history ID (original logic)
         const entry = history.find(h => h.historyId === historyId);
         
         if (!entry) {

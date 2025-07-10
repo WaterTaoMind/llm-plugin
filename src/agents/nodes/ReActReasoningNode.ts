@@ -183,11 +183,9 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                 const stepTypeIcon = action.stepType === 'llm_processing' ? '🧠' : '🔧';
                 prompt += `[${action.historyId}] ${stepTypeIcon} Step ${action.step} (${action.stepType}): ${action.tool} - ${action.success ? 'SUCCESS' : 'FAILED'}\n`;
                 
-                // Truncate long results for readability
-                const truncatedResult = action.result.length > 300 
-                    ? action.result.substring(0, 300) + '...' 
-                    : action.result;
-                prompt += `Result: ${truncatedResult}\n\n`;
+                // Provide complete results for proper decision making
+                // Show full content to enable correct decision-making
+                prompt += `Result: ${action.result}\n\n`;
             });
         }
         
@@ -216,7 +214,9 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `When using "llm_processing", you must specify:\n`;
         prompt += `- "llmTask": Type of processing (translate, summarize, analyze, transform, extract, rewrite, etc.)\n`;
         prompt += `- "llmPrompt": Specific instructions for the LLM (be detailed and clear)\n`;
-        prompt += `- "inputHistoryId": Reference to history entry containing content to process (use exact ID from brackets above)\n\n`;
+        prompt += `- "inputHistoryId": Reference to history entry containing content to process (use exact ID from brackets above)\n`;
+        prompt += `  * For single content: use one ID like "action-1-123456789"\n`;
+        prompt += `  * For multiple content: use comma-separated IDs like "action-1-123,action-2-456,action-3-789"\n\n`;
         
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;

@@ -99,8 +99,8 @@ export class ReActActionNode extends Node<AgentSharedState> {
         // Update shared state
         Object.assign(shared, {
             actionHistory,
-            nextAction: undefined, // Clear the action after execution
-            currentStep: currentStep + 1 // Increment step counter
+            nextAction: undefined // Clear the action after execution
+            // Note: currentStep increment handled by ReasoningNode
         });
         
         console.log(`📋 Action result added to history with ID: ${historyId} (${isError ? 'FAILED' : 'SUCCESS'})`);
