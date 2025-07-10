@@ -37,12 +37,14 @@ export interface MCPTool {
 
 export interface ActionResult {
     step: number;
+    stepType: 'action' | 'llm_processing';  // New: distinguish step types
     server: string;
     tool: string;
     parameters: Record<string, any>;
     result: string;
     justification: string;
     success: boolean;
+    historyId: string;  // New: unique identifier for referencing
 }
 
 export interface ActionDecision {
@@ -54,9 +56,47 @@ export interface ActionDecision {
 
 export interface ReasoningResponse {
     reasoning: string;
-    decision: 'continue' | 'complete';
+    decision: 'continue' | 'complete' | 'llm_processing';
     action?: ActionDecision;
     goalStatus: string;
+    
+    // LLM processing fields
+    llmTask?: string;           // Task identifier (translate, summarize, etc.)
+    llmPrompt?: string;         // Crafted prompt for LLM
+    inputHistoryId?: string;    // Reference to specific history entry
+}
+
+export interface LLMProcessingRequest {
+    task: string;
+    prompt: string;
+    inputHistoryId: string;
+}
+
+export interface AgentSharedState {
+    // Input
+    userRequest?: string;
+    
+    // Tool Discovery
+    availableTools?: MCPTool[];
+    toolsByServer?: Record<string, MCPTool[]>;
+    toolServerMap?: Record<string, string>;
+    
+    // ReAct Process
+    currentStep?: number;
+    maxSteps?: number;
+    actionHistory?: ActionResult[];
+    currentReasoning?: string;
+    goalStatus?: string;
+    nextAction?: ActionDecision;
+    
+    // LLM Processing
+    nextLLMRequest?: LLMProcessingRequest;
+    
+    // Configuration
+    modelConfig?: ModelConfig;
+    
+    // Final Result
+    finalResult?: string;
 }
 
 export interface ModelConfig {

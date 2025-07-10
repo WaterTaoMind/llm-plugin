@@ -3,6 +3,7 @@ import { AgentSharedState, LLMProvider, MCPClient, ModelConfig } from './types';
 import { DiscoverToolsNode } from './nodes/DiscoverToolsNode';
 import { ReActReasoningNode } from './nodes/ReActReasoningNode';
 import { ReActActionNode } from './nodes/ReActActionNode';
+import { LLMProcessingNode } from './nodes/LLMProcessingNode';
 import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
 
 /**
@@ -14,6 +15,7 @@ export class ReActFlow {
     private discoverToolsNode: DiscoverToolsNode;
     private reasoningNode: ReActReasoningNode;
     private actionNode: ReActActionNode;
+    private llmProcessingNode: LLMProcessingNode;
     private summarizeNode: SummarizeResultsNode;
 
     constructor(
@@ -23,12 +25,14 @@ export class ReActFlow {
         // Retry configuration options
         reasoningRetries: number = 3,
         actionRetries: number = 3,
+        llmProcessingRetries: number = 3,
         summarizeRetries: number = 2
     ) {
         // Initialize PocketFlow nodes
         this.discoverToolsNode = new DiscoverToolsNode(mcpClient, 1, 1);
         this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
         this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
+        this.llmProcessingNode = new LLMProcessingNode(llmProvider, llmProcessingRetries, 1);
         this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
 
         // Set up PocketFlow node chaining with conditional branching
@@ -46,12 +50,14 @@ export class ReActFlow {
         // Step 1: Tool Discovery -> Reasoning
         this.discoverToolsNode.next(this.reasoningNode);
 
-        // Step 2: Reasoning -> Action (continue) OR Summarization (complete)
-        this.reasoningNode.on("continue", this.actionNode);
-        this.reasoningNode.on("complete", this.summarizeNode);
+        // Step 2: Reasoning -> 3-way routing
+        this.reasoningNode.on("continue", this.actionNode);           // External actions
+        this.reasoningNode.on("llm_processing", this.llmProcessingNode); // Internal LLM processing
+        this.reasoningNode.on("complete", this.summarizeNode);        // Final summary
 
-        // Step 3: Action -> Loop back to Reasoning (for iterative ReAct)
+        // Step 3: Both action types loop back to Reasoning (for iterative ReAct)
         this.actionNode.on("default", this.reasoningNode);
+        this.llmProcessingNode.on("continue", this.reasoningNode);
 
         // Step 4: Summarization is the end (no next node)
         // this.summarizeNode returns undefined in post() to end the flow

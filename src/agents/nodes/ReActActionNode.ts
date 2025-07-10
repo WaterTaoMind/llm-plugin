@@ -78,14 +78,19 @@ export class ReActActionNode extends Node<AgentSharedState> {
         // Handle both successful and failed executions
         const isError = execResult?.startsWith('Error:') || execResult === null;
         
+        // Generate unique history ID for this action step
+        const historyId = `action-${currentStep}-${Date.now()}`;
+        
         const actionResult: ActionResult = {
             step: currentStep,
+            stepType: 'action',  // Mark as external action
             server: action.server,
             tool: action.tool,
             parameters: action.parameters,
             result: execResult || `Failed execution: ${action.tool}`,
             justification: action.justification,
-            success: !isError
+            success: !isError,
+            historyId: historyId  // Add unique identifier
         };
         
         // Add to action history
@@ -94,8 +99,11 @@ export class ReActActionNode extends Node<AgentSharedState> {
         // Update shared state
         Object.assign(shared, {
             actionHistory,
-            nextAction: undefined // Clear the action after execution
+            nextAction: undefined, // Clear the action after execution
+            currentStep: currentStep + 1 // Increment step counter
         });
+        
+        console.log(`📋 Action result added to history with ID: ${historyId} (${isError ? 'FAILED' : 'SUCCESS'})`);
         
         return "default";
     }

@@ -1,5 +1,5 @@
 import { Node } from "pocketflow";
-import { AgentSharedState, LLMProvider, ReasoningResponse, ActionDecision } from '../types';
+import { AgentSharedState, LLMProvider, ReasoningResponse, ActionDecision, LLMProcessingRequest } from '../types';
 
 /**
  * Node for ReAct reasoning step
@@ -73,6 +73,21 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             nextAction: reasoning.action
         });
         
+        // Handle LLM processing requests
+        if (reasoning.decision === 'llm_processing') {
+            if (!reasoning.llmTask || !reasoning.llmPrompt || !reasoning.inputHistoryId) {
+                throw new Error('LLM processing decision requires llmTask, llmPrompt, and inputHistoryId');
+            }
+            
+            shared.nextLLMRequest = {
+                task: reasoning.llmTask,
+                prompt: reasoning.llmPrompt,
+                inputHistoryId: reasoning.inputHistoryId
+            };
+            
+            console.log(`🧠 Prepared LLM processing: ${reasoning.llmTask} using history ID: ${reasoning.inputHistoryId}`);
+        }
+        
         // Check if we've reached maximum steps
         if (currentStep >= maxSteps) {
             console.log(`⏰ Reached maximum steps (${maxSteps}) - forcing completion`);
@@ -81,8 +96,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         }
         
         // Return action for PocketFlow conditional branching
-        // This determines which node to execute next
-        return reasoning.decision; // "continue" or "complete"
+        // This determines which node to execute next: "continue", "llm_processing", or "complete"
+        return reasoning.decision;
     }
 
     /**
@@ -161,12 +176,18 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `## Available Tools:\nNo tools are currently available. You can still reason and provide helpful responses.\n\n`;
         }
         
-        // Add action history
+        // Add action history with historyId references
         if (history.length > 0) {
             prompt += `## Previous Actions:\n`;
-            history.forEach((action, i) => {
-                prompt += `Step ${action.step}: Used ${action.tool} - ${action.success ? 'SUCCESS' : 'FAILED'}\n`;
-                prompt += `Result: ${action.result}\n\n`;
+            history.forEach((action) => {
+                const stepTypeIcon = action.stepType === 'llm_processing' ? '🧠' : '🔧';
+                prompt += `[${action.historyId}] ${stepTypeIcon} Step ${action.step} (${action.stepType}): ${action.tool} - ${action.success ? 'SUCCESS' : 'FAILED'}\n`;
+                
+                // Truncate long results for readability
+                const truncatedResult = action.result.length > 300 
+                    ? action.result.substring(0, 300) + '...' 
+                    : action.result;
+                prompt += `Result: ${truncatedResult}\n\n`;
             });
         }
         
@@ -186,17 +207,33 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `For complex multi-step tasks, ensure you plan the complete workflow before starting.\n\n`;
         }
         
+        prompt += `## Available Decisions:\n`;
+        prompt += `1. **"continue"**: Use external tools for data gathering, file operations, web requests\n`;
+        prompt += `2. **"llm_processing"**: Process content using internal LLM capabilities (translate, summarize, analyze, transform, extract, etc.)\n`;
+        prompt += `3. **"complete"**: Task is finished, ready for final summary\n\n`;
+        
+        prompt += `## LLM Processing Instructions:\n`;
+        prompt += `When using "llm_processing", you must specify:\n`;
+        prompt += `- "llmTask": Type of processing (translate, summarize, analyze, transform, extract, rewrite, etc.)\n`;
+        prompt += `- "llmPrompt": Specific instructions for the LLM (be detailed and clear)\n`;
+        prompt += `- "inputHistoryId": Reference to history entry containing content to process (use exact ID from brackets above)\n\n`;
+        
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;
         prompt += `- "reasoning": Your step-by-step thinking process\n`;
-        prompt += `- "decision": Either "continue" (take action) or "complete" (finish)\n`;
+        prompt += `- "decision": One of "continue", "llm_processing", or "complete"\n`;
         prompt += `- "goalStatus": Brief status of progress toward the goal\n`;
-        prompt += `- "action": If continuing, specify the tool and parameters\n\n`;
+        prompt += `- "action": If decision is "continue", specify external tool and parameters\n`;
+        prompt += `- "llmTask": If decision is "llm_processing", specify the task type\n`;
+        prompt += `- "llmPrompt": If decision is "llm_processing", provide detailed processing instructions\n`;
+        prompt += `- "inputHistoryId": If decision is "llm_processing", reference the history ID to process\n\n`;
         
-        prompt += `Guidelines:\n`;
-        prompt += `- For the first step, focus on planning the complete workflow before taking action\n`;
-        prompt += `- Be efficient - don't use tools unnecessarily\n`;
-        prompt += `- For multi-step tasks, ensure each step builds toward the final deliverable\n`;
+        prompt += `## Guidelines:\n`;
+        prompt += `- Use "continue" for external data gathering (fetch, search, file operations)\n`;
+        prompt += `- Use "llm_processing" for content transformation tasks on existing data\n`;
+        prompt += `- Use "complete" when the user's request has been fully accomplished\n`;
+        prompt += `- Reference history IDs exactly as shown in brackets [like-this]\n`;
+        prompt += `- Be efficient - choose the most direct approach for each task\n`;
         
         return prompt;
     }
@@ -217,7 +254,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             "type": "object",
             "properties": {
                 "reasoning": {"type": "string"},
-                "decision": {"type": "string"},
+                "decision": {"type": "string", "enum": ["continue", "complete", "llm_processing"]},
                 "goalStatus": {"type": "string"},
                 "action": {
                     "type": "object", 
@@ -228,7 +265,10 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                         "justification": {"type": "string"}
                     },
                     "required": ["server", "tool", "parameters", "justification"]
-                }
+                },
+                "llmTask": {"type": "string"},
+                "llmPrompt": {"type": "string"},
+                "inputHistoryId": {"type": "string"}
             },
             "required": ["reasoning", "decision", "goalStatus"]
         };
