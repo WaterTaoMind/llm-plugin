@@ -160,16 +160,27 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         let prompt = `You are a ReAct (Reasoning + Acting) agent. Your task is to help with: "${state.userRequest}"\n\n`;
         
-        // Add available tools
+        // Add available tools with enhanced information
         if (tools.length > 0) {
             prompt += `## Available Tools (IMPORTANT: Use exact server names shown):\n`;
-            tools.forEach(tool => {
-                prompt += `- **${tool.name}** (SERVER: ${tool.server}): ${tool.description}\n`;
-                // Include parameter schema for proper usage
-                if (tool.inputSchema && tool.inputSchema.properties) {
-                    const params = Object.keys(tool.inputSchema.properties);
-                    prompt += `  Parameters: {${params.map(p => `"${p}"`).join(', ')}}\n`;
-                }
+            
+            // Group tools by server for better organization while keeping server names clear
+            const toolsByServer = tools.reduce((acc, tool) => {
+                if (!acc[tool.server]) acc[tool.server] = [];
+                acc[tool.server].push(tool);
+                return acc;
+            }, {} as Record<string, typeof tools>);
+            
+            Object.entries(toolsByServer).forEach(([serverName, serverTools]) => {
+                prompt += `\n**${serverName}:**\n`;
+                serverTools.forEach(tool => {
+                    prompt += `- **${tool.name}** (SERVER: ${tool.server}): ${tool.description}\n`;
+                    // Include parameter schema for proper usage
+                    if (tool.inputSchema && tool.inputSchema.properties) {
+                        const params = Object.keys(tool.inputSchema.properties);
+                        prompt += `  Parameters: {${params.map(p => `"${p}"`).join(', ')}}\n`;
+                    }
+                });
             });
             prompt += `\n`;
         } else {
