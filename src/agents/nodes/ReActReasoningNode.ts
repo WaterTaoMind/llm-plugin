@@ -157,8 +157,28 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         const tools = state.availableTools || [];
         const history = state.actionHistory || [];
         const maxSteps = state.maxSteps || 10;
+        const remainingSteps = maxSteps - currentStep;
         
         let prompt = `You are a ReAct (Reasoning + Acting) agent. Your task is to help with: "${state.userRequest}"\n\n`;
+        
+        // Add step efficiency awareness
+        prompt += `## Step Efficiency Guidelines:\n`;
+        prompt += `⏱️ **Current Step**: ${currentStep}/${maxSteps} (${remainingSteps} steps remaining)\n`;
+        prompt += `🎯 **Efficiency Focus**: With ${remainingSteps} steps left, consider how to accomplish the most work in each step while maintaining quality.\n`;
+        
+        if (remainingSteps <= 5) {
+            prompt += `⚠️ **Limited Steps**: You have only ${remainingSteps} steps remaining. Plan carefully and batch operations when possible.\n`;
+        }
+        
+        if (remainingSteps <= 2) {
+            prompt += `🚨 **Critical Phase**: Only ${remainingSteps} steps left! Prioritize completing the core task. Consider using 'llm_processing' to handle multiple transformations in one step.\n`;
+        }
+        
+        prompt += `\n**Efficiency Strategies**:\n`;
+        prompt += `- When processing multiple similar items, handle several in one step when possible\n`;
+        prompt += `- Use 'llm_processing' to batch content transformations, analysis, or generation tasks\n`;
+        prompt += `- Combine related file operations or data gathering in single tool calls\n`;
+        prompt += `- If generating multiple audio segments, scripts, or files, process them in batches\n\n`;
         
         // Add available tools with enhanced information
         if (tools.length > 0) {
@@ -201,19 +221,32 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         }
         
         prompt += `## Current Situation:\n`;
-        prompt += `- Step ${currentStep} of ${maxSteps}\n`;
-        prompt += `- User Request: ${state.userRequest}\n\n`;
+        prompt += `- Step ${currentStep} of ${maxSteps} (${remainingSteps} remaining)\n`;
+        prompt += `- User Request: ${state.userRequest}\n`;
         
-        // Add task decomposition for first step
+        // Add basic progress info
+        if (history.length > 0) {
+            const successfulActions = history.filter(action => action.success).length;
+            const failedActions = history.filter(action => !action.success).length;
+            prompt += `- Progress: ${successfulActions} successful actions, ${failedActions} failed actions\n`;
+        }
+        prompt += `\n`;
+        
+        // Add task decomposition for first step with efficiency planning
         if (currentStep === 1 && (history.length === 0)) {
-            prompt += `## Initial Task Decomposition:\n`;
-            prompt += `Before taking any actions, first analyze the user request and break it down:\n`;
+            prompt += `## Initial Task Decomposition & Efficiency Planning:\n`;
+            prompt += `Before taking any actions, analyze the user request and plan efficiently:\n`;
             prompt += `1. What is the complete goal the user wants to achieve?\n`;
-            prompt += `2. What are the sequential steps needed to accomplish this goal?\n`;
+            prompt += `2. What are the sequential steps needed, and how can they be batched?\n`;
             prompt += `3. Which tools/capabilities will be required for each step?\n`;
-            prompt += `4. What will the final deliverable look like?\n\n`;
+            prompt += `4. How can you accomplish multiple sub-tasks in each step?\n`;
+            prompt += `5. What will the final deliverable look like?\n\n`;
             
-            prompt += `For complex multi-step tasks, ensure you plan the complete workflow before starting.\n\n`;
+            prompt += `**Efficiency Planning**: With only ${maxSteps} steps available, plan to accomplish multiple related tasks in each step.\n`;
+            prompt += `For example:\n`;
+            prompt += `- If generating multiple files/segments, batch them together\n`;
+            prompt += `- If processing multiple pieces of content, handle them in one 'llm_processing' step\n`;
+            prompt += `- If fetching multiple resources, combine requests when possible\n\n`;
         }
         
         prompt += `## Available Decisions:\n`;
@@ -244,7 +277,13 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- Use "llm_processing" for content transformation tasks on existing data\n`;
         prompt += `- Use "complete" when the user's request has been fully accomplished\n`;
         prompt += `- Reference history IDs exactly as shown in brackets [like-this]\n`;
-        prompt += `- Be efficient - choose the most direct approach for each task\n`;
+        prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
+        prompt += `- **BATCH OPERATIONS**: When generating multiple items (audio segments, files, content), handle several together\n`;
+        prompt += `- **SMART DECISIONS**: Choose actions that accomplish the most toward your goal\n`;
+        
+        if (remainingSteps <= 3) {
+            prompt += `- **CRITICAL**: Only ${remainingSteps} steps left - focus on completing core requirements\n`;
+        }
         
         return prompt;
     }
@@ -259,6 +298,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         // Return the original text if no URL pattern found
         return text;
     }
+
 
     private getReasoningSchema(): any {
         return {
