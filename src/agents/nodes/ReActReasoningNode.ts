@@ -322,10 +322,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         if (hasCommands) {
             experience += `**Command Execution:**\n`;
-            experience += `- For Python tasks: Start with 'conda activate llm' to ensure proper environment\n`;
-            experience += `- If commands fail with syntax errors, try 'command --help' to understand usage\n`;
-            experience += `- For Python scripts: Use full conda path '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/python'\n`;
-            experience += `- Check environment with 'which python3' and 'pip list' if module errors occur\n\n`;
+            experience += `- If commands fail with syntax errors, try 'command --help' to understand usage\n\n`;
         }
         
         if (hasYoutube) {
