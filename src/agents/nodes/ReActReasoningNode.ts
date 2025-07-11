@@ -174,11 +174,13 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `🚨 **Critical Phase**: Only ${remainingSteps} steps left! Prioritize completing the core task. Consider using 'llm_processing' to handle multiple transformations in one step.\n`;
         }
         
-        prompt += `\n**Efficiency Strategies**:\n`;
-        prompt += `- When processing multiple similar items, handle several in one step when possible\n`;
-        prompt += `- Use 'llm_processing' to batch content transformations, analysis, or generation tasks\n`;
-        prompt += `- Combine related file operations or data gathering in single tool calls\n`;
-        prompt += `- If generating multiple audio segments, scripts, or files, process them in batches\n\n`;
+        prompt += `\n**Efficiency Principle**:\n`;
+        prompt += `- Accomplish as much work as effectively and efficiently as possible in each step\n`;
+        prompt += `- Look for opportunities to combine, batch, or parallelize related operations\n`;
+        prompt += `- Examples: generate multiple files in one script, process multiple content pieces together, combine related tool calls\n\n`;
+        
+        // Add tool usage experience section
+        prompt += this.getToolUsageExperience(tools);
         
         // Add available tools with enhanced information
         if (tools.length > 0) {
@@ -242,11 +244,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             prompt += `4. How can you accomplish multiple sub-tasks in each step?\n`;
             prompt += `5. What will the final deliverable look like?\n\n`;
             
-            prompt += `**Efficiency Planning**: With only ${maxSteps} steps available, plan to accomplish multiple related tasks in each step.\n`;
-            prompt += `For example:\n`;
-            prompt += `- If generating multiple files/segments, batch them together\n`;
-            prompt += `- If processing multiple pieces of content, handle them in one 'llm_processing' step\n`;
-            prompt += `- If fetching multiple resources, combine requests when possible\n\n`;
+            prompt += `**Efficiency Planning**: With only ${maxSteps} steps available, design an approach that maximizes progress per step.\n`;
+            prompt += `Consider: Can multiple operations be combined? Can related tasks be handled together? What's the most direct path to completion?\n\n`;
         }
         
         prompt += `## Available Decisions:\n`;
@@ -278,8 +277,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- Use "complete" when the user's request has been fully accomplished\n`;
         prompt += `- Reference history IDs exactly as shown in brackets [like-this]\n`;
         prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
-        prompt += `- **BATCH OPERATIONS**: When generating multiple items (audio segments, files, content), handle several together\n`;
-        prompt += `- **SMART DECISIONS**: Choose actions that accomplish the most toward your goal\n`;
+        prompt += `- **STRATEGIC APPROACH**: Choose actions that accomplish the most progress toward your goal\n`;
+        prompt += `- **COMBINE OPERATIONS**: Look for ways to handle multiple related tasks in single actions\n`;
         
         if (remainingSteps <= 3) {
             prompt += `- **CRITICAL**: Only ${remainingSteps} steps left - focus on completing core requirements\n`;
@@ -299,6 +298,44 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         return text;
     }
 
+
+    /**
+     * Generate tool usage experience guidance based on available tools
+     */
+    private getToolUsageExperience(tools: any[]): string {
+        const hasFilesystem = tools.some(t => t.server === 'filesystem');
+        const hasCommands = tools.some(t => t.server === 'commands');
+        const hasYoutube = tools.some(t => t.server === 'youtube-transcript');
+        
+        if (!hasFilesystem && !hasCommands && !hasYoutube) {
+            return '';
+        }
+        
+        let experience = `## Tool Usage Experience (Best Practices):\n`;
+        
+        if (hasFilesystem) {
+            experience += `**Filesystem Operations:**\n`;
+            experience += `- Before file operations, use 'list_allowed_directories' to understand available paths\n`;
+            experience += `- Use 'list_directory' to check directory contents before reading/writing files\n`;
+            experience += `- Verify file paths exist before attempting operations\n\n`;
+        }
+        
+        if (hasCommands) {
+            experience += `**Command Execution:**\n`;
+            experience += `- For Python tasks: Start with 'conda activate llm' to ensure proper environment\n`;
+            experience += `- If commands fail with syntax errors, try 'command --help' to understand usage\n`;
+            experience += `- For Python scripts: Use full conda path '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/python'\n`;
+            experience += `- Check environment with 'which python3' and 'pip list' if module errors occur\n\n`;
+        }
+        
+        if (hasYoutube) {
+            experience += `**YouTube Operations:**\n`;
+            experience += `- Extract clean YouTube URLs before calling transcript tools\n`;
+            experience += `- Set keep_audio=false unless specifically requested to save space\n\n`;
+        }
+        
+        return experience;
+    }
 
     private getReasoningSchema(): any {
         return {
