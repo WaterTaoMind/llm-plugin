@@ -395,8 +395,8 @@ export class LLMView extends ItemView {
      */
     private finalizeProgressStreaming(prompt: string, result: string) {
         if (this.currentProgressMessage) {
-            // Add completion indicator and embed final result in progress message
-            const completionText = `\n---\n\n✅ **Task Completed Successfully**\n\n${result}`;
+            // Add completion indicator only (final result will be in dedicated section)
+            const completionText = `\n---\n\n✅ **Task Completed Successfully**`;
             this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
             
             // Add integrated action buttons to the progress message
