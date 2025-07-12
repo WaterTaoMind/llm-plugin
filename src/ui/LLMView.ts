@@ -7,6 +7,7 @@ import { ImageService } from '../services/ImageService';
 import { ChatHistory } from './components/ChatHistory';
 import { InputArea } from './components/InputArea';
 import { joinPath, normalizePath } from '../utils/pathUtils';
+import { AgentProgressEvent } from '../agents/types';
 
 export class LLMView extends ItemView {
     private plugin: LLMPlugin;
@@ -20,6 +21,11 @@ export class LLMView extends ItemView {
         error: null,
         lastRequest: null
     };
+    private currentProgressMessage?: HTMLElement;
+    private lastProgressUpdate = 0;
+    private readonly PROGRESS_THROTTLE_MS = 300;
+    private pendingProgressUpdates: string[] = [];
+    private progressUpdateTimer?: number;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -241,6 +247,14 @@ export class LLMView extends ItemView {
         try {
             this.setLoading(true);
 
+            // Set up progress callback for agent mode
+            const effectiveMode = this.llmService.getCurrentMode();
+            console.log('🔍 Mode check:', { effectiveMode, isAgent: effectiveMode === ProcessingMode.AGENT, hasAgentPrefix: prompt.startsWith('/agent') });
+            if (effectiveMode === ProcessingMode.AGENT || prompt.startsWith('/agent')) {
+                console.log('🚀 Setting up progress streaming for agent mode');
+                this.setupProgressStreaming(prompt);
+            }
+
             const options = conversationId ? ["-c", "--cid", conversationId] : [];
             const response = await this.llmService.sendRequest({
                 prompt,
@@ -255,7 +269,13 @@ export class LLMView extends ItemView {
                 throw new Error(response.error);
             }
 
-            this.appendToChatHistory(prompt, response.result);
+            // For agent mode, the response.result includes the formatted result
+            // For chat mode, just append normally
+            if (effectiveMode === ProcessingMode.AGENT || prompt.startsWith('/agent')) {
+                this.finalizeProgressStreaming(prompt, response.result);
+            } else {
+                this.appendToChatHistory(prompt, response.result);
+            }
 
             // Clear inputs (matching original behavior)
             this.inputArea.setPromptValue('');
@@ -271,6 +291,183 @@ export class LLMView extends ItemView {
             new Notice('Failed to get LLM response. Please try again.');
         } finally {
             this.setLoading(false);
+        }
+    }
+
+    /**
+     * Set up progress streaming for agent mode
+     */
+    private setupProgressStreaming(prompt: string) {
+        console.log('🚀 setupProgressStreaming called with prompt:', prompt.substring(0, 50) + '...');
+        
+        // Add the user message immediately
+        this.chatHistory.addMessage({
+            id: `user-${Date.now()}`,
+            type: 'user',
+            content: prompt,
+            timestamp: new Date()
+        });
+        console.log('✅ User message added to chat history');
+
+        // Create and add initial progress message
+        this.currentProgressMessage = this.chatHistory.addProgressMessage('🚀 **Agent Started**\nAnalyzing request and planning approach...\n\n');
+        console.log('✅ Progress message created:', !!this.currentProgressMessage);
+        
+
+        // Set up progress callback
+        this.llmService.setProgressCallback((event: AgentProgressEvent) => {
+            console.log('📝 Progress event received:', event.type, event.step);
+            this.handleProgressUpdate(event);
+        });
+        console.log('✅ Progress callback set on LLM service');
+    }
+
+    /**
+     * Handle progress updates during agent execution
+     */
+    private handleProgressUpdate(event: AgentProgressEvent) {
+        console.log('🔄 handleProgressUpdate called:', event.type, event.step, !!this.currentProgressMessage);
+        
+        if (!this.currentProgressMessage) {
+            console.error('❌ No currentProgressMessage found for progress update');
+            return;
+        }
+
+        let progressText = '';
+
+        switch (event.type) {
+            case 'step_start':
+                progressText += `🤔 **Step ${event.step}${event.data.progress ? ` - ${event.data.progress}` : ''}**\n`;
+                progressText += `${event.data.description}\n\n`;
+                break;
+            
+            case 'reasoning_complete':
+                progressText += `💭 **Reasoning**: ${event.data.reasoning}\n`;
+                progressText += `📊 **Goal Status**: ${event.data.goalStatus}\n`;
+                progressText += `🎯 **Decision**: ${event.data.decision}\n`;
+                if (event.data.nextAction !== 'None') {
+                    progressText += `🛠️ **Next Action**: ${event.data.nextAction}\n`;
+                }
+                progressText += '\n';
+                break;
+            
+            case 'action_start':
+                progressText += `🔧 **Executing**: ${event.data.tool} (${event.data.server})\n`;
+                progressText += `📝 **Purpose**: ${event.data.justification}\n\n`;
+                break;
+            
+            case 'action_complete':
+                const status = event.data.success ? '✅' : '❌';
+                progressText += `${status} **${event.data.tool}** - `;
+                if (event.data.result.length > 100) {
+                    progressText += `${event.data.result.substring(0, 100)}...\n`;
+                    progressText += `<details><summary>📄 Full Result (${event.data.result.length} chars)</summary>\n\n${event.data.result}\n</details>\n\n`;
+                } else {
+                    progressText += `${event.data.result}\n\n`;
+                }
+                break;
+        }
+
+        console.log('📝 Progress text generated:', progressText.length > 0 ? progressText.substring(0, 100) + '...' : '(empty)');
+
+        if (progressText) {
+            this.updateProgressThrottled(progressText);
+        } else {
+            console.log('⚠️ No progress text generated for event type:', event.type);
+        }
+    }
+
+    /**
+     * Throttled progress update using batching to prevent DOM thrashing
+     */
+    private updateProgressThrottled(progressText: string) {
+        // Ensure the progress message element still exists and is visible
+        if (!this.currentProgressMessage || !this.currentProgressMessage.isConnected) {
+            console.log('⚠️ Progress message element not found or disconnected from DOM');
+            return;
+        }
+        
+        // Add to pending updates
+        this.pendingProgressUpdates.push(progressText);
+        
+        const now = Date.now();
+        const timeSinceLastUpdate = now - this.lastProgressUpdate;
+        
+        if (timeSinceLastUpdate >= this.PROGRESS_THROTTLE_MS) {
+            // Flush all pending updates immediately
+            console.log('📤 Immediate progress update - flushing', this.pendingProgressUpdates.length, 'updates');
+            this.flushPendingProgressUpdates();
+            this.lastProgressUpdate = now;
+        } else if (!this.progressUpdateTimer) {
+            // Schedule a single batch update
+            const delay = this.PROGRESS_THROTTLE_MS - timeSinceLastUpdate;
+            console.log(`⏱️ Scheduling batch progress update in ${delay}ms (${this.pendingProgressUpdates.length} updates pending)`);
+            this.progressUpdateTimer = window.setTimeout(() => {
+                console.log('🕐 Executing scheduled batch update with', this.pendingProgressUpdates.length, 'updates');
+                this.flushPendingProgressUpdates();
+                this.lastProgressUpdate = Date.now();
+                this.progressUpdateTimer = undefined;
+            }, delay);
+        }
+    }
+
+    /**
+     * Flush all pending progress updates to the DOM
+     */
+    private flushPendingProgressUpdates() {
+        if (this.pendingProgressUpdates.length === 0) {
+            return;
+        }
+        
+        if (!this.currentProgressMessage || !this.currentProgressMessage.isConnected) {
+            console.log('⚠️ Skipping batch update - progress message no longer exists');
+            this.pendingProgressUpdates = [];
+            return;
+        }
+
+        try {
+            // Combine all pending updates into a single DOM operation
+            const combinedUpdate = this.pendingProgressUpdates.join('');
+            this.chatHistory.appendToProgressMessage(this.currentProgressMessage!, combinedUpdate);
+            console.log('✅ Batch progress update completed:', this.pendingProgressUpdates.length, 'updates');
+            this.pendingProgressUpdates = [];
+        } catch (error) {
+            console.error('❌ Failed to update progress message:', error);
+            this.pendingProgressUpdates = [];
+        }
+    }
+
+    /**
+     * Finalize progress streaming with final result
+     */
+    private finalizeProgressStreaming(prompt: string, result: string) {
+        // Clear any pending timer and flush remaining updates
+        if (this.progressUpdateTimer) {
+            clearTimeout(this.progressUpdateTimer);
+            this.progressUpdateTimer = undefined;
+        }
+        this.flushPendingProgressUpdates();
+        
+        if (this.currentProgressMessage) {
+            // Add completion indicator to progress message
+            const completionText = `\n---\n\n✅ **Task Completed Successfully** - Final result displayed below\n`;
+            this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
+            
+            // Create a proper chat message for the final result (same style as chat mode)
+            const finalResultMessage = {
+                id: `agent-result-${Date.now()}`,
+                type: 'assistant' as const,
+                content: result,
+                timestamp: new Date()
+            };
+            
+            // Add the final result as a regular chat message with action buttons
+            this.chatHistory.addMessage(finalResultMessage, (content) => this.plugin.renderMarkdown(content));
+            
+            this.currentProgressMessage = undefined;
+        } else {
+            // Fallback to normal chat history
+            this.appendToChatHistory(prompt, result);
         }
     }
 

@@ -10,9 +10,9 @@ export class ChatHistory {
         this.container.addClass('llm-chat-history');
     }
 
-    addMessage(message: ChatMessage, markdownRenderer: (content: string) => string) {
+    addMessage(message: ChatMessage, markdownRenderer?: (content: string) => string) {
         this.messages.push(message);
-        this.renderMessage(message, markdownRenderer);
+        this.renderMessage(message, markdownRenderer || ((content) => content));
         this.scrollToBottom();
     }
 
@@ -98,6 +98,56 @@ export class ChatHistory {
 
     private scrollToBottom() {
         this.container.scrollTop = this.container.scrollHeight;
+    }
+
+
+    /**
+     * Create a progress message for real-time updates
+     */
+    addProgressMessage(initialContent: string): HTMLElement {
+        const messageEl = this.container.createDiv({
+            cls: 'llm-chat-message llm-chat-assistant-message llm-progress-message'
+        });
+
+        const progressContent = messageEl.createDiv({ cls: 'llm-chat-content' });
+        const renderedContent = this.renderMarkdown(initialContent);
+        progressContent.innerHTML = `
+            <div class="llm-chat-icon">${ChatbotIcon}</div>
+            <div class="llm-chat-text llm-progress-text">${renderedContent}</div>
+        `;
+
+        this.scrollToBottom();
+        return messageEl;
+    }
+
+    /**
+     * Append content to existing progress message
+     */
+    appendToProgressMessage(messageEl: HTMLElement, content: string): void {
+        const textEl = messageEl.querySelector('.llm-progress-text');
+        if (textEl) {
+            const renderedContent = this.renderMarkdown(content);
+            textEl.innerHTML += renderedContent;
+            
+            // Force a repaint to ensure visibility
+            messageEl.style.display = 'block';
+            messageEl.offsetHeight; // Trigger reflow
+        }
+        this.scrollToBottom();
+    }
+
+
+    /**
+     * Simple markdown rendering for progress messages
+     */
+    private renderMarkdown(content: string): string {
+        return content
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>')
+            .replace(/<details><summary>(.*?)<\/summary>\n\n(.*?)\n<\/details>/gs, 
+                '<details><summary>$1</summary><div style="margin-top: 8px;">$2</div></details>');
     }
 
     clear() {

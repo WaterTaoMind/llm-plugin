@@ -1,9 +1,9 @@
 import { LLMRequest, LLMResponse, LLMPluginSettings } from '../core/types';
 import { MCPClientService } from './MCPClientService';
-import { ReActFlow } from '../agents/ReActFlow';
+import { ReActAgent } from '../agents/ReActAgent';
 import { LLMWilsonProvider } from '../agents/LLMWilsonProvider';
 import { MCPClientAdapter } from '../agents/MCPClientAdapter';
-import { ModelConfig } from '../agents/types';
+import { ModelConfig, ProgressCallback } from '../agents/types';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -18,7 +18,7 @@ import * as fs from 'fs';
  */
 export class AgenticLLMService {
     private mcpClientService?: MCPClientService;
-    private reActFlow?: ReActFlow;
+    private reActAgent?: ReActAgent;
     private agentPath: string;
 
     constructor(private settings: LLMPluginSettings) {
@@ -31,13 +31,13 @@ export class AgenticLLMService {
      */
     setMCPClientService(mcpClientService: MCPClientService): void {
         this.mcpClientService = mcpClientService;
-        this.initializeReActFlow();
+        this.initializeReActAgent();
     }
 
     /**
-     * Initialize the PocketFlow ReAct system
+     * Initialize the TypeScript ReAct Agent system
      */
-    private initializeReActFlow(): void {
+    private initializeReActAgent(): void {
         if (!this.mcpClientService) {
             console.warn('Cannot initialize ReAct flow without MCP client service');
             return;
@@ -60,14 +60,26 @@ export class AgenticLLMService {
                 default: this.settings.defaultModel || 'gpt-4o-mini'
             };
             
-            // Initialize the PocketFlow ReAct system
-            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig);
+            // Initialize the TypeScript ReAct Agent system
+            this.reActAgent = new ReActAgent(llmProvider, mcpClient, modelConfig);
             
-            console.log('✅ PocketFlow ReAct system initialized successfully');
+            console.log('✅ TypeScript ReAct Agent initialized successfully');
         } catch (error) {
             console.error('❌ Failed to initialize ReAct flow:', error);
         }
     }
+
+    /**
+     * Set progress callback for real-time updates
+     */
+    setProgressCallback(callback: ProgressCallback) {
+        this.progressCallback = callback;
+        if (this.reActAgent) {
+            this.reActAgent.setProgressCallback(callback);
+        }
+    }
+
+    private progressCallback?: ProgressCallback;
 
     /**
      * Send request to agentic system (always use PocketFlow ReAct in Agent mode)
@@ -103,10 +115,10 @@ export class AgenticLLMService {
      */
     private async callAgenticSystem(request: LLMRequest): Promise<LLMResponse> {
         try {
-            console.log('🤖 Using PocketFlow ReAct System...');
+            console.log('🤖 Using TypeScript ReAct Agent...');
 
-            if (!this.reActFlow) {
-                const error = 'PocketFlow ReAct system not initialized - cannot process in Agent mode';
+            if (!this.reActAgent) {
+                const error = 'TypeScript ReAct Agent not initialized - cannot process in Agent mode';
                 console.error('❌', error);
                 return {
                     result: '',
@@ -114,11 +126,16 @@ export class AgenticLLMService {
                 };
             }
 
+            // Set progress callback if available
+            if (this.progressCallback) {
+                this.reActAgent.setProgressCallback(this.progressCallback);
+            }
+
             // Determine max steps based on request complexity
             const maxSteps = this.getMaxStepsForRequest(request);
             
-            // Execute the PocketFlow ReAct system
-            const result = await this.reActFlow.execute(request.prompt, maxSteps);
+            // Execute the TypeScript ReAct Agent
+            const result = await this.reActAgent.execute(request.prompt, maxSteps);
 
             return {
                 result: result,
@@ -126,7 +143,7 @@ export class AgenticLLMService {
             };
 
         } catch (error) {
-            console.error('❌ PocketFlow ReAct System error:', error);
+            console.error('❌ TypeScript ReAct Agent error:', error);
             return {
                 result: '',
                 error: error instanceof Error ? error.message : 'Flow execution failed'
@@ -149,11 +166,11 @@ export class AgenticLLMService {
         try {
             const llmPath = '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/llm';
             const llmExists = fs.existsSync(llmPath);
-            const agentInitialized = !!this.reActFlow;
+            const agentInitialized = !!this.reActAgent;
             
-            console.log(`🔍 PocketFlow Agent availability check:`);
+            console.log(`🔍 TypeScript ReAct Agent availability check:`);
             console.log(`   LLM CLI: ${llmExists ? '✅' : '❌'} (${llmPath})`);
-            console.log(`   ReAct Flow: ${agentInitialized ? '✅' : '❌'} (PocketFlow)`);
+            console.log(`   ReAct Agent: ${agentInitialized ? '✅' : '❌'} (TypeScript)`);
             console.log(`   MCP Client: ${!!this.mcpClientService ? '✅' : '❌'} (Service)`);
             
             return llmExists && agentInitialized && !!this.mcpClientService;

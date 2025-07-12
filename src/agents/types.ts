@@ -2,6 +2,16 @@
  * TypeScript type definitions for the ReAct Agent system
  */
 
+// Progress event system for real-time updates
+export interface AgentProgressEvent {
+    type: 'step_start' | 'step_complete' | 'action_start' | 'action_complete' | 'reasoning_complete' | 'final_result';
+    step: number;
+    data: any;
+    timestamp: number;
+}
+
+export type ProgressCallback = (event: AgentProgressEvent) => void;
+
 export interface AgentSharedState {
     // Input
     userRequest?: string;
@@ -18,6 +28,10 @@ export interface AgentSharedState {
     currentReasoning?: string;
     goalStatus?: string;
     nextAction?: ActionDecision;
+    
+    // Progress Tracking
+    startTime?: number;
+    progressCallback?: ProgressCallback;
     
     // Configuration
     modelConfig?: ModelConfig;

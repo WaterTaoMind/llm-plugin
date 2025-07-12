@@ -1,5 +1,5 @@
 import { Node } from "pocketflow";
-import { AgentSharedState, LLMProvider, ReasoningResponse, ActionDecision, LLMProcessingRequest } from '../types';
+import { AgentSharedState, LLMProvider, ReasoningResponse, ActionDecision, LLMProcessingRequest, AgentProgressEvent } from '../types';
 
 /**
  * Node for ReAct reasoning step
@@ -19,6 +19,13 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         const maxSteps = shared.maxSteps || 10;
         
         console.log(`🤔 ReAct Reasoning - Step ${currentStep}/${maxSteps}`);
+        
+        // Emit step start progress
+        this.emitProgress(shared, 'step_start', {
+            stepType: 'reasoning',
+            description: `Analyzing situation and planning next action`,
+            progress: `Step ${currentStep}/${maxSteps}`
+        }, currentStep);
         
         return { state: shared, currentStep };
     }
@@ -53,6 +60,14 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             console.log(`🛠️ Next Action: ${reasoning.action.tool} (${reasoning.action.server})`);
             console.log(`📝 Justification: ${reasoning.action.justification}`);
         }
+        
+        // Emit reasoning completion progress
+        this.emitProgress(state, 'reasoning_complete', {
+            reasoning: this.truncateText(reasoning.reasoning, 200),
+            decision: reasoning.decision,
+            goalStatus: reasoning.goalStatus,
+            nextAction: reasoning.action ? `${reasoning.action.tool} (${reasoning.action.server})` : 'None'
+        }, currentStep);
         
         return reasoning;
     }
@@ -298,6 +313,28 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         return text;
     }
 
+
+    /**
+     * Emit progress event to callback if available
+     */
+    private emitProgress(state: AgentSharedState, type: AgentProgressEvent['type'], data: any, step: number) {
+        if (state.progressCallback) {
+            state.progressCallback({
+                type,
+                step,
+                data,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    /**
+     * Truncate text for progress display
+     */
+    private truncateText(text: string, maxLength: number): string {
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
 
     /**
      * Generate tool usage experience guidance based on available tools

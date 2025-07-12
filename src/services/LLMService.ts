@@ -3,6 +3,7 @@ import { MCPClientService } from './MCPClientService';
 import { AgenticLLMService } from './AgenticLLMService';
 import { parseCommand, getEffectiveMode } from '../utils/commandParser';
 import { withHttpRetry, createLLMError, RetryOptions } from '../utils/retryUtils';
+import { ProgressCallback } from '../agents/types';
 
 export class LLMService {
     private mcpClientService?: MCPClientService;
@@ -35,6 +36,13 @@ export class LLMService {
     setCurrentMode(mode: ProcessingMode): void {
         this.currentMode = mode;
         console.log(`🎯 UI Mode changed to: ${mode.toUpperCase()}`);
+    }
+
+    /**
+     * Set progress callback for agent mode
+     */
+    setProgressCallback(callback: ProgressCallback) {
+        this.agenticService.setProgressCallback(callback);
     }
 
     async sendRequest(request: LLMRequest): Promise<LLMResponse> {

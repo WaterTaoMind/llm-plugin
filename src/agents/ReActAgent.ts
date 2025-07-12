@@ -1,4 +1,4 @@
-import { AgentSharedState, LLMProvider, MCPClient, ModelConfig } from './types';
+import { AgentSharedState, LLMProvider, MCPClient, ModelConfig, ProgressCallback, AgentProgressEvent } from './types';
 import { DiscoverToolsNode } from './nodes/DiscoverToolsNode';
 import { ReActReasoningNode } from './nodes/ReActReasoningNode';
 import { ReActActionNode } from './nodes/ReActActionNode';
@@ -35,6 +35,30 @@ export class ReActAgent {
     }
 
     /**
+     * Set progress callback for real-time updates
+     */
+    setProgressCallback(callback: ProgressCallback) {
+        // Store callback for sharing with nodes
+        this.progressCallback = callback;
+    }
+
+    private progressCallback?: ProgressCallback;
+
+    /**
+     * Emit progress event to callback
+     */
+    private emitProgress(type: AgentProgressEvent['type'], data: any, step: number = 0) {
+        if (this.progressCallback) {
+            this.progressCallback({
+                type,
+                step,
+                data,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    /**
      * Execute the ReAct agent workflow using PocketFlow node patterns
      * 
      * @param userRequest The user's request to process
@@ -46,18 +70,28 @@ export class ReActAgent {
         console.log(`📝 User Request: ${userRequest}`);
         console.log(`🔢 Max Steps: ${maxSteps}`);
         
+        // Emit initial progress
+        this.emitProgress('step_start', {
+            description: 'Starting agent execution and analyzing request...'
+        }, 0);
+        
         // Initialize shared state
         const state: AgentSharedState = {
             userRequest,
             maxSteps,
             currentStep: 0,
             actionHistory: [],
-            modelConfig: this.modelConfig
+            modelConfig: this.modelConfig,
+            startTime: Date.now(),
+            progressCallback: this.progressCallback
         };
 
         try {
             // Step 1: Discover available tools using PocketFlow node
             console.log('\n🔍 Phase 1: Tool Discovery');
+            this.emitProgress('step_start', {
+                description: 'Discovering available tools and capabilities...'
+            }, 0);
             await this.runNode(this.discoverToolsNode, state);
             
             // Step 2: ReAct loop (Reasoning + Acting) using PocketFlow nodes
@@ -66,11 +100,25 @@ export class ReActAgent {
             
             // Step 3: Summarize results using PocketFlow node
             console.log('\n📋 Phase 3: Result Summarization');
+            this.emitProgress('step_start', {
+                description: 'Generating final summary and formatting results...'
+            }, (state.currentStep || 0) + 1);
             await this.runNode(this.summarizeNode, state);
             
             const finalResult = state.finalResult || 'Agent completed but no result was generated.';
             const actionCount = state.actionHistory?.length || 0;
             const stepCount = state.currentStep || 0;
+            const duration = state.startTime ? Date.now() - state.startTime : 0;
+            
+            // Emit final result
+            this.emitProgress('final_result', {
+                result: finalResult,
+                stats: {
+                    actionsCompleted: actionCount,
+                    stepsCompleted: stepCount,
+                    duration: Math.round(duration / 1000) + 's'
+                }
+            }, stepCount);
             
             console.log(`\n🎉 TypeScript ReAct Agent - Execution Complete`);
             console.log(`📊 Actions taken: ${actionCount}/${maxSteps}`);

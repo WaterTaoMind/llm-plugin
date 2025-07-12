@@ -1,5 +1,5 @@
 import { Node } from "pocketflow";
-import { AgentSharedState, MCPClient, ActionResult } from '../types';
+import { AgentSharedState, MCPClient, ActionResult, AgentProgressEvent } from '../types';
 
 /**
  * Node for executing ReAct actions (tool calls)
@@ -27,6 +27,14 @@ export class ReActActionNode extends Node<AgentSharedState> {
         console.log(`   Tool: ${action.tool} (${action.server})`);
         console.log(`   Parameters:`, JSON.stringify(action.parameters, null, 2));
         console.log(`   Justification: ${action.justification}`);
+        
+        // Emit action start progress
+        this.emitProgress(shared, 'action_start', {
+            tool: action.tool,
+            server: action.server,
+            justification: action.justification,
+            parameters: Object.keys(action.parameters)
+        }, currentStep);
         
         return { action, currentStep };
     }
@@ -96,6 +104,15 @@ export class ReActActionNode extends Node<AgentSharedState> {
         // Add to action history
         const actionHistory = [...(shared.actionHistory || []), actionResult];
         
+        // Emit action completion progress
+        this.emitProgress(shared, 'action_complete', {
+            tool: action.tool,
+            server: action.server,
+            success: !isError,
+            result: this.formatResultSummary(execResult || 'Failed execution'),
+            historyId: historyId
+        }, currentStep);
+        
         // Update shared state
         Object.assign(shared, {
             actionHistory,
@@ -106,6 +123,50 @@ export class ReActActionNode extends Node<AgentSharedState> {
         console.log(`📋 Action result added to history with ID: ${historyId} (${isError ? 'FAILED' : 'SUCCESS'})`);
         
         return "default";
+    }
+
+    /**
+     * Emit progress event to callback if available
+     */
+    private emitProgress(state: AgentSharedState, type: AgentProgressEvent['type'], data: any, step: number) {
+        if (state.progressCallback) {
+            state.progressCallback({
+                type,
+                step,
+                data,
+                timestamp: Date.now()
+            });
+        }
+    }
+
+    /**
+     * Format result summary for progress display
+     */
+    private formatResultSummary(result: string): string {
+        if (result.length <= 150) return result;
+        
+        // For long results, provide a smart summary
+        const lines = result.split('\n');
+        const firstLine = lines[0] || '';
+        
+        if (firstLine.length > 100) {
+            return firstLine.substring(0, 100) + '...';
+        }
+        
+        // Try to include a few meaningful lines
+        let summary = firstLine;
+        for (let i = 1; i < lines.length && summary.length < 120; i++) {
+            const line = lines[i].trim();
+            if (line) {
+                summary += '\n' + line;
+            }
+        }
+        
+        if (summary.length < result.length) {
+            summary += '\n...';
+        }
+        
+        return summary;
     }
 
     /**
