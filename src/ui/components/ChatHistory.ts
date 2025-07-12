@@ -150,66 +150,68 @@ export class ChatHistory {
     }
 
     /**
-     * Add hierarchical action buttons like chat mode
+     * Add hierarchical action buttons with embedded final result section
      */
     addProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
         const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
-        const completeResponse = textEl ? this.formatCompleteResponse(textEl.textContent || '') : '';
-
-        // Create content selector dropdown to choose between complete response and final result
-        const actionContainer = messageEl.createDiv({ cls: 'llm-message-actions' });
         
-        // Content selector
-        const contentSelector = actionContainer.createEl('select', { cls: 'llm-content-selector' });
-        contentSelector.innerHTML = `
-            <option value="complete">Complete Response</option>
-            <option value="final">Final Result</option>
+        if (!textEl) return;
+        
+        // Create embedded final result section within the progress text
+        const finalResultSection = textEl.createDiv({ cls: 'llm-final-result-section' });
+        finalResultSection.innerHTML = `
+            <div class="llm-final-result-header">Final Result</div>
+            <div class="llm-final-result-content">${this.renderMarkdown(finalResult)}</div>
         `;
         
-        // Store both content types for dynamic switching
-        (messageEl as any)._completeResponse = completeResponse;
-        (messageEl as any)._finalResult = finalResult;
-        (messageEl as any)._currentContent = completeResponse;
+        // Add action buttons under final result section
+        const finalResultActions = finalResultSection.createDiv({ cls: 'llm-message-actions' });
+        this.createStandardActionButtons(finalResultActions, finalResult, 'final result');
         
-        // Action buttons (same structure as chat mode)
-        this.createProgressActionButton(actionContainer, 'copy', 'Copy to clipboard');
-        this.createProgressActionButton(actionContainer, 'insert', 'Insert at cursor');
-        this.createProgressActionButton(actionContainer, 'prepend', 'Prepend to note');
-        this.createProgressActionButton(actionContainer, 'append', 'Append to note');
-        
-        // Handle content selector change
-        contentSelector.onchange = () => {
-            const selectedContent = contentSelector.value === 'complete' ? completeResponse : finalResult;
-            (messageEl as any)._currentContent = selectedContent;
-        };
+        // Add action buttons under complete response (entire message)
+        const completeResponseActions = messageEl.createDiv({ cls: 'llm-message-actions' });
+        const completeResponse = this.formatCompleteResponse(textEl.textContent || '');
+        this.createStandardActionButtons(completeResponseActions, completeResponse, 'complete response');
     }
 
     /**
-     * Create progress action button that uses dynamic content selection
+     * Create standard action buttons exactly like chat mode
      */
-    private createProgressActionButton(container: HTMLElement, action: string, tooltip: string): void {
-        const button = container.createEl('button', { cls: 'llm-block-action' });
-        button.setAttribute('title', tooltip);
-        
-        const svgMap: { [key: string]: string } = {
-            'copy': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
-            'insert': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="8 12 12 12 16 12"></polyline></svg>',
-            'prepend': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="12 12 12 6"></polyline><polyline points="8 8 12 4 16 8"></polyline></svg>',
-            'append': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="12 12 12 18"></polyline><polyline points="8 16 12 20 16 16"></polyline></svg>'
-        };
-        
-        button.innerHTML = svgMap[action] || '';
-        button.onclick = () => {
-            // Get current content from message element
-            const messageEl = button.closest('.llm-chat-message') as any;
-            const content = messageEl?._currentContent || '';
-            
-            if (action === 'copy') {
-                this.copyToClipboard(content, button);
-            } else {
-                this.triggerAction(action, content, button);
-            }
-        };
+    private createStandardActionButtons(container: HTMLElement, content: string, contentType: string): void {
+        // Copy button
+        const copyButton = container.createEl('button', { cls: 'llm-block-action' });
+        copyButton.setAttribute('title', `Copy ${contentType} to clipboard`);
+        copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+        copyButton.onclick = () => this.copyToClipboard(content, copyButton);
+
+        // Insert button
+        const insertButton = container.createEl('button', { cls: 'llm-block-action' });
+        insertButton.setAttribute('title', `Insert ${contentType} at cursor`);
+        insertButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="8 12 12 12 16 12"></polyline>
+        </svg>`;
+        insertButton.onclick = () => this.triggerAction('insert', content, insertButton);
+
+        // Prepend button
+        const prependButton = container.createEl('button', { cls: 'llm-block-action' });
+        prependButton.setAttribute('title', `Prepend ${contentType} to note`);
+        prependButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="12 12 12 6"></polyline>
+          <polyline points="8 8 12 4 16 8"></polyline>
+        </svg>`;
+        prependButton.onclick = () => this.triggerAction('prepend', content, prependButton);
+
+        // Append button
+        const appendButton = container.createEl('button', { cls: 'llm-block-action' });
+        appendButton.setAttribute('title', `Append ${contentType} to note`);
+        appendButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+          <polyline points="12 12 12 18"></polyline>
+          <polyline points="8 16 12 20 16 16"></polyline>
+        </svg>`;
+        appendButton.onclick = () => this.triggerAction('append', content, appendButton);
     }
 
     /**
