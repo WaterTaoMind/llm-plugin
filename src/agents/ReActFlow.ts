@@ -1,5 +1,5 @@
 import { Flow } from "pocketflow";
-import { AgentSharedState, LLMProvider, MCPClient, ModelConfig } from './types';
+import { AgentSharedState, LLMProvider, MCPClient, ModelConfig, ProgressCallback } from './types';
 import { DiscoverToolsNode } from './nodes/DiscoverToolsNode';
 import { ReActReasoningNode } from './nodes/ReActReasoningNode';
 import { ReActActionNode } from './nodes/ReActActionNode';
@@ -64,6 +64,15 @@ export class ReActFlow {
     }
 
     /**
+     * Set progress callback for real-time updates
+     */
+    setProgressCallback(callback: ProgressCallback) {
+        this.progressCallback = callback;
+    }
+
+    private progressCallback?: ProgressCallback;
+
+    /**
      * Execute the ReAct workflow using PocketFlow's automatic execution
      * 
      * @param userRequest The user's request to process
@@ -81,7 +90,9 @@ export class ReActFlow {
             maxSteps,
             currentStep: 0,
             actionHistory: [],
-            modelConfig: undefined // Will be set by nodes if needed
+            modelConfig: undefined, // Will be set by nodes if needed
+            startTime: Date.now(),
+            progressCallback: this.progressCallback
         };
 
         try {
