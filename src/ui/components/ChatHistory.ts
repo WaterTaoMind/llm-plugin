@@ -17,8 +17,14 @@ export class ChatHistory {
     }
 
     private renderMessage(message: ChatMessage, markdownRenderer: (content: string) => string) {
+        // Apply unified purple styling to all assistant messages
+        const isAssistant = message.type === 'assistant';
+        const messageClasses = isAssistant 
+            ? 'llm-chat-message llm-chat-assistant-message llm-progress-message'
+            : `llm-chat-message llm-chat-${message.type}-message`;
+            
         const messageEl = this.container.createDiv({
-            cls: `llm-chat-message llm-chat-${message.type}-message`
+            cls: messageClasses
         });
 
         const icon = message.type === 'user' ? UserIcon : ChatbotIcon;
@@ -26,10 +32,13 @@ export class ChatHistory {
             ? markdownRenderer(message.content)
             : message.content;
 
+        // Use progress text styling for assistant messages to match theme
+        const textClass = isAssistant ? 'llm-chat-text llm-progress-text' : 'llm-chat-text';
+
         messageEl.innerHTML = `
             <div class="llm-chat-content">
                 <div class="llm-chat-icon">${icon}</div>
-                <div class="llm-chat-text">${content}</div>
+                <div class="${textClass}">${content}</div>
             </div>
         `;
 
@@ -109,12 +118,15 @@ export class ChatHistory {
             cls: 'llm-chat-message llm-chat-assistant-message llm-progress-message'
         });
 
-        const progressContent = messageEl.createDiv({ cls: 'llm-chat-content' });
-        const renderedContent = this.renderMarkdown(initialContent);
-        progressContent.innerHTML = `
-            <div class="llm-chat-icon">${ChatbotIcon}</div>
-            <div class="llm-chat-text llm-progress-text">${renderedContent}</div>
-        `;
+        const icon = ChatbotIcon;
+        const content = this.renderMarkdown(initialContent);
+
+        // Create DOM structure exactly like renderMessage() for consistency
+        const contentDiv = messageEl.createDiv({ cls: 'llm-chat-content' });
+        const iconDiv = contentDiv.createDiv({ cls: 'llm-chat-icon' });
+        iconDiv.innerHTML = icon;
+        const textDiv = contentDiv.createDiv({ cls: 'llm-chat-text llm-progress-text' });
+        textDiv.innerHTML = content;
 
         this.scrollToBottom();
         return messageEl;
@@ -136,6 +148,83 @@ export class ChatHistory {
         this.scrollToBottom();
     }
 
+    /**
+     * Add dual action buttons to progress message - for final result and complete response
+     */
+    addDualProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
+        // Extract and format complete response content from the progress message
+        const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
+        const rawCompleteResponse = textEl ? textEl.textContent || textEl.innerText || '' : '';
+        const completeResponse = this.formatCompleteResponse(rawCompleteResponse);
+
+        // Create clean action buttons layout (similar to chat mode)
+        const actionsContainer = messageEl.createDiv({ cls: 'llm-dual-actions-container' });
+        
+        // Complete response buttons with subtle label
+        const completeGroup = actionsContainer.createDiv({ cls: 'llm-action-group' });
+        const completeLabel = completeGroup.createDiv({ 
+            cls: 'llm-action-group-label', 
+            text: 'Complete Response' 
+        });
+        const completeButtons = completeGroup.createDiv({ cls: 'llm-message-actions' });
+        this.createActionButtons(completeButtons, completeResponse, 'complete response');
+
+        // Final result buttons with subtle label
+        const resultGroup = actionsContainer.createDiv({ cls: 'llm-action-group' });
+        const resultLabel = resultGroup.createDiv({ 
+            cls: 'llm-action-group-label', 
+            text: 'Final Result' 
+        });
+        const resultButtons = resultGroup.createDiv({ cls: 'llm-message-actions' });
+        this.createActionButtons(resultButtons, finalResult, 'final result');
+    }
+
+    /**
+     * Create a set of action buttons (copy, insert, prepend, append)
+     */
+    private createActionButtons(container: HTMLElement, content: string, tooltipPrefix: string): void {
+        // Copy button
+        const copyButton = container.createEl('button', { cls: 'llm-block-action' });
+        copyButton.setAttribute('title', `Copy ${tooltipPrefix} to clipboard`);
+        copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+        copyButton.onclick = () => this.copyToClipboard(content, copyButton);
+
+        // Insert button
+        const insertButton = container.createEl('button', { cls: 'llm-block-action' });
+        insertButton.setAttribute('title', `Insert ${tooltipPrefix} at cursor`);
+        insertButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+        insertButton.onclick = () => this.triggerAction('insert', content, insertButton);
+
+        // Prepend button
+        const prependButton = container.createEl('button', { cls: 'llm-block-action' });
+        prependButton.setAttribute('title', `Prepend ${tooltipPrefix} to note`);
+        prependButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+        prependButton.onclick = () => this.triggerAction('prepend', content, prependButton);
+
+        // Append button
+        const appendButton = container.createEl('button', { cls: 'llm-block-action' });
+        appendButton.setAttribute('title', `Append ${tooltipPrefix} to note`);
+        appendButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
+        appendButton.onclick = () => this.triggerAction('append', content, appendButton);
+    }
+
+
+    /**
+     * Format complete response text for better readability
+     */
+    private formatCompleteResponse(rawText: string): string {
+        return rawText
+            // Add line breaks after sections
+            .replace(/([.!?])\s*([🤔🔧✅💭📊🎯🛠️📝])/g, '$1\n\n$2')
+            // Add spacing around step indicators
+            .replace(/(Step \d+)/g, '\n$1')
+            // Add spacing around completion indicators
+            .replace(/(Task Completed Successfully)/g, '\n$1\n')
+            // Clean up excessive whitespace
+            .replace(/\n{3,}/g, '\n\n')
+            // Trim whitespace
+            .trim();
+    }
 
     /**
      * Simple markdown rendering for progress messages

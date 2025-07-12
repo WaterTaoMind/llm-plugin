@@ -610,6 +610,11 @@
   box-shadow: none;
 }
 
+/* Ensure progress message icons match assistant message icons */
+.llm-progress-message .llm-chat-icon {
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+}
+
 .llm-progress-text {
   font-family: var(--font-interface);
   line-height: 1.6;
@@ -650,6 +655,29 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 0.25rem;
+}
+
+/* Clean dual actions layout - stacked vertically like chat mode */
+.llm-dual-actions-container {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.llm-action-group {
+  width: 100%;
+  min-width: 0;
+}
+
+.llm-action-group-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  opacity: 0.8;
+  text-align: center;
 }
 
 .llm-action-button {

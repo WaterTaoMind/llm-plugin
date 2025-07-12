@@ -395,20 +395,12 @@ export class LLMView extends ItemView {
      */
     private finalizeProgressStreaming(prompt: string, result: string) {
         if (this.currentProgressMessage) {
-            // Add completion indicator to progress message
-            const completionText = `\n---\n\n✅ **Task Completed Successfully** - Final result displayed below\n`;
+            // Add completion indicator and embed final result in progress message
+            const completionText = `\n---\n\n✅ **Task Completed Successfully**\n\n${result}`;
             this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
             
-            // Create a proper chat message for the final result (same style as chat mode)
-            const finalResultMessage = {
-                id: `agent-result-${Date.now()}`,
-                type: 'assistant' as const,
-                content: result,
-                timestamp: new Date()
-            };
-            
-            // Add the final result as a regular chat message with action buttons
-            this.chatHistory.addMessage(finalResultMessage, (content) => this.plugin.renderMarkdown(content));
+            // Add dual action buttons to the progress message
+            this.chatHistory.addDualProgressMessageActions(this.currentProgressMessage, result);
             
             this.currentProgressMessage = undefined;
         } else {
