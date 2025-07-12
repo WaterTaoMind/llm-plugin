@@ -610,9 +610,10 @@
   box-shadow: none;
 }
 
-/* Ensure progress message icons match assistant message icons */
-.llm-progress-message .llm-chat-icon {
-  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover));
+/* Ensure progress message icons match assistant message icons exactly */
+.llm-progress-message.llm-chat-assistant-message .llm-chat-icon {
+  margin: 0;
+  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover)) !important;
 }
 
 .llm-progress-text {
@@ -657,27 +658,13 @@
   margin-top: 0.25rem;
 }
 
-/* Clean dual actions layout - stacked vertically like chat mode */
-.llm-dual-actions-container {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: stretch;
-}
-
-.llm-action-group {
+/* Action separator for progress messages */
+.llm-action-separator {
   width: 100%;
-  min-width: 0;
-}
-
-.llm-action-group-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  opacity: 0.8;
-  text-align: center;
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 8px 0;
+  opacity: 0.5;
 }
 
 .llm-action-button {

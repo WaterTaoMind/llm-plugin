@@ -149,34 +149,25 @@ export class ChatHistory {
     }
 
     /**
-     * Add dual action buttons to progress message - for final result and complete response
+     * Add integrated action buttons to progress message (like chat mode)
      */
-    addDualProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
-        // Extract and format complete response content from the progress message
+    addProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
+        // Extract complete response content from the progress message
         const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
         const rawCompleteResponse = textEl ? textEl.textContent || textEl.innerText || '' : '';
         const completeResponse = this.formatCompleteResponse(rawCompleteResponse);
 
-        // Create clean action buttons layout (similar to chat mode)
-        const actionsContainer = messageEl.createDiv({ cls: 'llm-dual-actions-container' });
+        // Create action container exactly like chat mode - directly on the message element
+        const actionContainer = messageEl.createDiv({ cls: 'llm-message-actions' });
         
-        // Complete response buttons with subtle label
-        const completeGroup = actionsContainer.createDiv({ cls: 'llm-action-group' });
-        const completeLabel = completeGroup.createDiv({ 
-            cls: 'llm-action-group-label', 
-            text: 'Complete Response' 
-        });
-        const completeButtons = completeGroup.createDiv({ cls: 'llm-message-actions' });
-        this.createActionButtons(completeButtons, completeResponse, 'complete response');
-
-        // Final result buttons with subtle label
-        const resultGroup = actionsContainer.createDiv({ cls: 'llm-action-group' });
-        const resultLabel = resultGroup.createDiv({ 
-            cls: 'llm-action-group-label', 
-            text: 'Final Result' 
-        });
-        const resultButtons = resultGroup.createDiv({ cls: 'llm-message-actions' });
-        this.createActionButtons(resultButtons, finalResult, 'final result');
+        // First row: Complete response actions
+        this.createActionButtons(actionContainer, completeResponse, 'complete response');
+        
+        // Add visual separator
+        const separator = actionContainer.createDiv({ cls: 'llm-action-separator' });
+        
+        // Second row: Final result actions  
+        this.createActionButtons(actionContainer, finalResult, 'final result');
     }
 
     /**

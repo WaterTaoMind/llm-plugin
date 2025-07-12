@@ -399,8 +399,8 @@ export class LLMView extends ItemView {
             const completionText = `\n---\n\n✅ **Task Completed Successfully**\n\n${result}`;
             this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
             
-            // Add dual action buttons to the progress message
-            this.chatHistory.addDualProgressMessageActions(this.currentProgressMessage, result);
+            // Add integrated action buttons to the progress message
+            this.chatHistory.addProgressMessageActions(this.currentProgressMessage, result);
             
             this.currentProgressMessage = undefined;
         } else {
