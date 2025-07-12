@@ -17,10 +17,10 @@ export class ChatHistory {
     }
 
     private renderMessage(message: ChatMessage, markdownRenderer: (content: string) => string) {
-        // Apply unified purple styling to all assistant messages
+        // Only apply progress styling to actual progress messages, not regular assistant messages
         const isAssistant = message.type === 'assistant';
         const messageClasses = isAssistant 
-            ? 'llm-chat-message llm-chat-assistant-message llm-progress-message'
+            ? 'llm-chat-message llm-chat-assistant-message'
             : `llm-chat-message llm-chat-${message.type}-message`;
             
         const messageEl = this.container.createDiv({
@@ -32,8 +32,8 @@ export class ChatHistory {
             ? markdownRenderer(message.content)
             : message.content;
 
-        // Use progress text styling for assistant messages to match theme
-        const textClass = isAssistant ? 'llm-chat-text llm-progress-text' : 'llm-chat-text';
+        // Use regular chat text styling for standard messages
+        const textClass = 'llm-chat-text';
 
         messageEl.innerHTML = `
             <div class="llm-chat-content">
@@ -150,33 +150,66 @@ export class ChatHistory {
     }
 
     /**
-     * Add integrated action buttons to the message container.
-     * This function is now unified for all message types.
+     * Add hierarchical action buttons like chat mode
      */
     addProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
         const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
         const completeResponse = textEl ? this.formatCompleteResponse(textEl.textContent || '') : '';
 
+        // Create content selector dropdown to choose between complete response and final result
         const actionContainer = messageEl.createDiv({ cls: 'llm-message-actions' });
-
-        // Unified button creation
-        this.createActionButtons(actionContainer, completeResponse, 'complete response');
-        this.createActionButtons(actionContainer, finalResult, 'final result', true);
+        
+        // Content selector
+        const contentSelector = actionContainer.createEl('select', { cls: 'llm-content-selector' });
+        contentSelector.innerHTML = `
+            <option value="complete">Complete Response</option>
+            <option value="final">Final Result</option>
+        `;
+        
+        // Store both content types for dynamic switching
+        (messageEl as any)._completeResponse = completeResponse;
+        (messageEl as any)._finalResult = finalResult;
+        (messageEl as any)._currentContent = completeResponse;
+        
+        // Action buttons (same structure as chat mode)
+        this.createProgressActionButton(actionContainer, 'copy', 'Copy to clipboard');
+        this.createProgressActionButton(actionContainer, 'insert', 'Insert at cursor');
+        this.createProgressActionButton(actionContainer, 'prepend', 'Prepend to note');
+        this.createProgressActionButton(actionContainer, 'append', 'Append to note');
+        
+        // Handle content selector change
+        contentSelector.onchange = () => {
+            const selectedContent = contentSelector.value === 'complete' ? completeResponse : finalResult;
+            (messageEl as any)._currentContent = selectedContent;
+        };
     }
 
     /**
-     * Create a single, unified set of action buttons.
-     * An optional separator can be added for visual grouping.
+     * Create progress action button that uses dynamic content selection
      */
-    private createActionButtons(container: HTMLElement, content: string, tooltipPrefix: string, addSeparator: boolean = false): void {
-        if (addSeparator) {
-            container.createDiv({ cls: 'llm-action-separator' });
-        }
-
-        this.createSingleActionButton(container, content, 'copy', `Copy ${tooltipPrefix}`);
-        this.createSingleActionButton(container, content, 'insert', `Insert ${tooltipPrefix}`);
-        this.createSingleActionButton(container, content, 'prepend', `Prepend ${tooltipPrefix}`);
-        this.createSingleActionButton(container, content, 'append', `Append ${tooltipPrefix}`);
+    private createProgressActionButton(container: HTMLElement, action: string, tooltip: string): void {
+        const button = container.createEl('button', { cls: 'llm-block-action' });
+        button.setAttribute('title', tooltip);
+        
+        const svgMap: { [key: string]: string } = {
+            'copy': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+            'insert': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+            'prepend': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>',
+            'append': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>'
+        };
+        
+        button.innerHTML = svgMap[action] || '';
+        button.onclick = () => {
+            // Get current content from message element
+            const messageEl = button.closest('.llm-chat-message') as any;
+            const content = messageEl?._currentContent || '';
+            
+            if (action === 'copy') {
+                this.copyToClipboard(content, button);
+            } else {
+                this.triggerAction(action, content, button);
+            }
+        };
     }
 
     /**
