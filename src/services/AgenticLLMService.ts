@@ -1,6 +1,6 @@
 import { LLMRequest, LLMResponse, LLMPluginSettings } from '../core/types';
 import { MCPClientService } from './MCPClientService';
-import { ReActAgent } from '../agents/ReActAgent';
+import { ReActFlow } from '../agents/ReActFlow';
 import { LLMWilsonProvider } from '../agents/LLMWilsonProvider';
 import { MCPClientAdapter } from '../agents/MCPClientAdapter';
 import { ModelConfig, ProgressCallback } from '../agents/types';
@@ -18,7 +18,7 @@ import * as fs from 'fs';
  */
 export class AgenticLLMService {
     private mcpClientService?: MCPClientService;
-    private reActAgent?: ReActAgent;
+    private reActFlow?: ReActFlow;
     private agentPath: string;
 
     constructor(private settings: LLMPluginSettings) {
@@ -31,13 +31,13 @@ export class AgenticLLMService {
      */
     setMCPClientService(mcpClientService: MCPClientService): void {
         this.mcpClientService = mcpClientService;
-        this.initializeReActAgent();
+        this.initializeReActFlow();
     }
 
     /**
-     * Initialize the TypeScript ReAct Agent system
+     * Initialize the TypeScript ReAct Flow system
      */
-    private initializeReActAgent(): void {
+    private initializeReActFlow(): void {
         if (!this.mcpClientService) {
             console.warn('Cannot initialize ReAct flow without MCP client service');
             return;
@@ -60,10 +60,10 @@ export class AgenticLLMService {
                 default: this.settings.defaultModel || 'gpt-4o-mini'
             };
             
-            // Initialize the TypeScript ReAct Agent system
-            this.reActAgent = new ReActAgent(llmProvider, mcpClient, modelConfig);
+            // Initialize the TypeScript ReAct Flow system
+            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig);
             
-            console.log('✅ TypeScript ReAct Agent initialized successfully');
+            console.log('✅ TypeScript ReAct Flow initialized successfully');
         } catch (error) {
             console.error('❌ Failed to initialize ReAct flow:', error);
         }
@@ -74,8 +74,8 @@ export class AgenticLLMService {
      */
     setProgressCallback(callback: ProgressCallback) {
         this.progressCallback = callback;
-        if (this.reActAgent) {
-            this.reActAgent.setProgressCallback(callback);
+        if (this.reActFlow) {
+            this.reActFlow.setProgressCallback(callback);
         }
     }
 
@@ -117,7 +117,7 @@ export class AgenticLLMService {
         try {
             console.log('🤖 Using TypeScript ReAct Agent...');
 
-            if (!this.reActAgent) {
+            if (!this.reActFlow) {
                 const error = 'TypeScript ReAct Agent not initialized - cannot process in Agent mode';
                 console.error('❌', error);
                 return {
@@ -128,14 +128,14 @@ export class AgenticLLMService {
 
             // Set progress callback if available
             if (this.progressCallback) {
-                this.reActAgent.setProgressCallback(this.progressCallback);
+                this.reActFlow.setProgressCallback(this.progressCallback);
             }
 
             // Determine max steps based on request complexity
             const maxSteps = this.getMaxStepsForRequest(request);
             
             // Execute the TypeScript ReAct Agent
-            const result = await this.reActAgent.execute(request.prompt, maxSteps);
+            const result = await this.reActFlow.execute(request.prompt, maxSteps);
 
             return {
                 result: result,
@@ -166,7 +166,7 @@ export class AgenticLLMService {
         try {
             const llmPath = '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/llm';
             const llmExists = fs.existsSync(llmPath);
-            const agentInitialized = !!this.reActAgent;
+            const agentInitialized = !!this.reActFlow;
             
             console.log(`🔍 TypeScript ReAct Agent availability check:`);
             console.log(`   LLM CLI: ${llmExists ? '✅' : '❌'} (${llmPath})`);
