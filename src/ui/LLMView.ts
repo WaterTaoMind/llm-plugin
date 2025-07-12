@@ -22,10 +22,6 @@ export class LLMView extends ItemView {
         lastRequest: null
     };
     private currentProgressMessage?: HTMLElement;
-    private lastProgressUpdate = 0;
-    private readonly PROGRESS_THROTTLE_MS = 300;
-    private pendingProgressUpdates: string[] = [];
-    private progressUpdateTimer?: number;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -371,69 +367,26 @@ export class LLMView extends ItemView {
         console.log('📝 Progress text generated:', progressText.length > 0 ? progressText.substring(0, 100) + '...' : '(empty)');
 
         if (progressText) {
-            this.updateProgressThrottled(progressText);
+            this.updateProgress(progressText);
         } else {
             console.log('⚠️ No progress text generated for event type:', event.type);
         }
     }
 
     /**
-     * Throttled progress update using batching to prevent DOM thrashing
+     * Update progress message immediately
      */
-    private updateProgressThrottled(progressText: string) {
+    private updateProgress(progressText: string) {
         // Ensure the progress message element still exists and is visible
         if (!this.currentProgressMessage || !this.currentProgressMessage.isConnected) {
             console.log('⚠️ Progress message element not found or disconnected from DOM');
             return;
         }
-        
-        // Add to pending updates
-        this.pendingProgressUpdates.push(progressText);
-        
-        const now = Date.now();
-        const timeSinceLastUpdate = now - this.lastProgressUpdate;
-        
-        if (timeSinceLastUpdate >= this.PROGRESS_THROTTLE_MS) {
-            // Flush all pending updates immediately
-            console.log('📤 Immediate progress update - flushing', this.pendingProgressUpdates.length, 'updates');
-            this.flushPendingProgressUpdates();
-            this.lastProgressUpdate = now;
-        } else if (!this.progressUpdateTimer) {
-            // Schedule a single batch update
-            const delay = this.PROGRESS_THROTTLE_MS - timeSinceLastUpdate;
-            console.log(`⏱️ Scheduling batch progress update in ${delay}ms (${this.pendingProgressUpdates.length} updates pending)`);
-            this.progressUpdateTimer = window.setTimeout(() => {
-                console.log('🕐 Executing scheduled batch update with', this.pendingProgressUpdates.length, 'updates');
-                this.flushPendingProgressUpdates();
-                this.lastProgressUpdate = Date.now();
-                this.progressUpdateTimer = undefined;
-            }, delay);
-        }
-    }
-
-    /**
-     * Flush all pending progress updates to the DOM
-     */
-    private flushPendingProgressUpdates() {
-        if (this.pendingProgressUpdates.length === 0) {
-            return;
-        }
-        
-        if (!this.currentProgressMessage || !this.currentProgressMessage.isConnected) {
-            console.log('⚠️ Skipping batch update - progress message no longer exists');
-            this.pendingProgressUpdates = [];
-            return;
-        }
 
         try {
-            // Combine all pending updates into a single DOM operation
-            const combinedUpdate = this.pendingProgressUpdates.join('');
-            this.chatHistory.appendToProgressMessage(this.currentProgressMessage!, combinedUpdate);
-            console.log('✅ Batch progress update completed:', this.pendingProgressUpdates.length, 'updates');
-            this.pendingProgressUpdates = [];
+            this.chatHistory.appendToProgressMessage(this.currentProgressMessage!, progressText);
         } catch (error) {
             console.error('❌ Failed to update progress message:', error);
-            this.pendingProgressUpdates = [];
         }
     }
 
@@ -441,13 +394,6 @@ export class LLMView extends ItemView {
      * Finalize progress streaming with final result
      */
     private finalizeProgressStreaming(prompt: string, result: string) {
-        // Clear any pending timer and flush remaining updates
-        if (this.progressUpdateTimer) {
-            clearTimeout(this.progressUpdateTimer);
-            this.progressUpdateTimer = undefined;
-        }
-        this.flushPendingProgressUpdates();
-        
         if (this.currentProgressMessage) {
             // Add completion indicator to progress message
             const completionText = `\n---\n\n✅ **Task Completed Successfully** - Final result displayed below\n`;
