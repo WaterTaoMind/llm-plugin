@@ -121,12 +121,13 @@ export class ChatHistory {
         const icon = ChatbotIcon;
         const content = this.renderMarkdown(initialContent);
 
-        // Create DOM structure exactly like renderMessage() for consistency
-        const contentDiv = messageEl.createDiv({ cls: 'llm-chat-content' });
-        const iconDiv = contentDiv.createDiv({ cls: 'llm-chat-icon' });
-        iconDiv.innerHTML = icon;
-        const textDiv = contentDiv.createDiv({ cls: 'llm-chat-text llm-progress-text' });
-        textDiv.innerHTML = content;
+        // Use the exact same structure as renderMessage for consistency
+        messageEl.innerHTML = `
+            <div class="llm-chat-content">
+                <div class="llm-chat-icon">${icon}</div>
+                <div class="llm-chat-text llm-progress-text">${content}</div>
+            </div>
+        `;
 
         this.scrollToBottom();
         return messageEl;
@@ -149,41 +150,37 @@ export class ChatHistory {
     }
 
     /**
-     * Add integrated action buttons to progress message (like chat mode)
+     * Add integrated action buttons to the message container.
+     * This function is now unified for all message types.
      */
     addProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
-        // Extract complete response content from the progress message
         const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
-        const rawCompleteResponse = textEl ? textEl.textContent || textEl.innerText || '' : '';
-        const completeResponse = this.formatCompleteResponse(rawCompleteResponse);
+        const completeResponse = textEl ? this.formatCompleteResponse(textEl.textContent || '') : '';
 
-        // Create action container exactly like chat mode - directly on the message element
         const actionContainer = messageEl.createDiv({ cls: 'llm-message-actions' });
-        
-        // Create all buttons in single row like chat mode
-        // Complete response buttons (with subtle visual distinction)
-        this.createProgressActionButtons(actionContainer, completeResponse, finalResult);
+
+        // Unified button creation
+        this.createActionButtons(actionContainer, completeResponse, 'complete response');
+        this.createActionButtons(actionContainer, finalResult, 'final result', true);
     }
 
     /**
-     * Create progress action buttons for both complete response and final result in single row
+     * Create a single, unified set of action buttons.
+     * An optional separator can be added for visual grouping.
      */
-    private createProgressActionButtons(container: HTMLElement, completeResponse: string, finalResult: string): void {
-        // Complete response buttons (first set)
-        this.createSingleActionButton(container, completeResponse, 'copy', 'Copy complete response');
-        this.createSingleActionButton(container, completeResponse, 'insert', 'Insert complete response');
-        this.createSingleActionButton(container, completeResponse, 'prepend', 'Prepend complete response');
-        this.createSingleActionButton(container, completeResponse, 'append', 'Append complete response');
-        
-        // Final result buttons (second set)
-        this.createSingleActionButton(container, finalResult, 'copy', 'Copy final result');
-        this.createSingleActionButton(container, finalResult, 'insert', 'Insert final result');
-        this.createSingleActionButton(container, finalResult, 'prepend', 'Prepend final result');
-        this.createSingleActionButton(container, finalResult, 'append', 'Append final result');
+    private createActionButtons(container: HTMLElement, content: string, tooltipPrefix: string, addSeparator: boolean = false): void {
+        if (addSeparator) {
+            container.createDiv({ cls: 'llm-action-separator' });
+        }
+
+        this.createSingleActionButton(container, content, 'copy', `Copy ${tooltipPrefix}`);
+        this.createSingleActionButton(container, content, 'insert', `Insert ${tooltipPrefix}`);
+        this.createSingleActionButton(container, content, 'prepend', `Prepend ${tooltipPrefix}`);
+        this.createSingleActionButton(container, content, 'append', `Append ${tooltipPrefix}`);
     }
 
     /**
-     * Create a single action button
+     * Create a single action button (retained for modularity).
      */
     private createSingleActionButton(container: HTMLElement, content: string, action: string, tooltip: string): void {
         const button = container.createEl('button', { cls: 'llm-block-action' });
@@ -206,34 +203,6 @@ export class ChatHistory {
         };
     }
 
-    /**
-     * Create a set of action buttons (copy, insert, prepend, append)
-     */
-    private createActionButtons(container: HTMLElement, content: string, tooltipPrefix: string): void {
-        // Copy button
-        const copyButton = container.createEl('button', { cls: 'llm-block-action' });
-        copyButton.setAttribute('title', `Copy ${tooltipPrefix} to clipboard`);
-        copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
-        copyButton.onclick = () => this.copyToClipboard(content, copyButton);
-
-        // Insert button
-        const insertButton = container.createEl('button', { cls: 'llm-block-action' });
-        insertButton.setAttribute('title', `Insert ${tooltipPrefix} at cursor`);
-        insertButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
-        insertButton.onclick = () => this.triggerAction('insert', content, insertButton);
-
-        // Prepend button
-        const prependButton = container.createEl('button', { cls: 'llm-block-action' });
-        prependButton.setAttribute('title', `Prepend ${tooltipPrefix} to note`);
-        prependButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
-        prependButton.onclick = () => this.triggerAction('prepend', content, prependButton);
-
-        // Append button
-        const appendButton = container.createEl('button', { cls: 'llm-block-action' });
-        appendButton.setAttribute('title', `Append ${tooltipPrefix} to note`);
-        appendButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`;
-        appendButton.onclick = () => this.triggerAction('append', content, appendButton);
-    }
 
 
     /**
