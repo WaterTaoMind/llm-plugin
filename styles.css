@@ -610,11 +610,7 @@
   box-shadow: none;
 }
 
-/* Ensure progress message icons match assistant message icons exactly */
-.llm-progress-message.llm-chat-assistant-message .llm-chat-icon {
-  margin: 0;
-  background: linear-gradient(135deg, var(--interactive-accent), var(--interactive-accent-hover)) !important;
-}
+/* Progress messages inherit assistant message styling automatically */
 
 .llm-progress-text {
   font-family: var(--font-interface);
@@ -658,14 +654,7 @@
   margin-top: 0.25rem;
 }
 
-/* Action separator for progress messages */
-.llm-action-separator {
-  width: 100%;
-  height: 1px;
-  background: var(--background-modifier-border);
-  margin: 8px 0;
-  opacity: 0.5;
-}
+/* Progress messages use standard action button layout */
 
 .llm-action-button {
   background: none;

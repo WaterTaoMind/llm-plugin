@@ -160,14 +160,50 @@ export class ChatHistory {
         // Create action container exactly like chat mode - directly on the message element
         const actionContainer = messageEl.createDiv({ cls: 'llm-message-actions' });
         
-        // First row: Complete response actions
-        this.createActionButtons(actionContainer, completeResponse, 'complete response');
+        // Create all buttons in single row like chat mode
+        // Complete response buttons (with subtle visual distinction)
+        this.createProgressActionButtons(actionContainer, completeResponse, finalResult);
+    }
+
+    /**
+     * Create progress action buttons for both complete response and final result in single row
+     */
+    private createProgressActionButtons(container: HTMLElement, completeResponse: string, finalResult: string): void {
+        // Complete response buttons (first set)
+        this.createSingleActionButton(container, completeResponse, 'copy', 'Copy complete response');
+        this.createSingleActionButton(container, completeResponse, 'insert', 'Insert complete response');
+        this.createSingleActionButton(container, completeResponse, 'prepend', 'Prepend complete response');
+        this.createSingleActionButton(container, completeResponse, 'append', 'Append complete response');
         
-        // Add visual separator
-        const separator = actionContainer.createDiv({ cls: 'llm-action-separator' });
+        // Final result buttons (second set)
+        this.createSingleActionButton(container, finalResult, 'copy', 'Copy final result');
+        this.createSingleActionButton(container, finalResult, 'insert', 'Insert final result');
+        this.createSingleActionButton(container, finalResult, 'prepend', 'Prepend final result');
+        this.createSingleActionButton(container, finalResult, 'append', 'Append final result');
+    }
+
+    /**
+     * Create a single action button
+     */
+    private createSingleActionButton(container: HTMLElement, content: string, action: string, tooltip: string): void {
+        const button = container.createEl('button', { cls: 'llm-block-action' });
+        button.setAttribute('title', tooltip);
         
-        // Second row: Final result actions  
-        this.createActionButtons(actionContainer, finalResult, 'final result');
+        const svgMap: { [key: string]: string } = {
+            'copy': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
+            'insert': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>',
+            'prepend': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>',
+            'append': '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>'
+        };
+        
+        button.innerHTML = svgMap[action] || '';
+        button.onclick = () => {
+            if (action === 'copy') {
+                this.copyToClipboard(content, button);
+            } else {
+                this.triggerAction(action, content, button);
+            }
+        };
     }
 
     /**
