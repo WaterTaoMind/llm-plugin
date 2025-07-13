@@ -51,7 +51,7 @@ export interface MCPTool {
 
 export interface ActionResult {
     step: number;
-    stepType: 'action' | 'llm_processing';  // New: distinguish step types
+    stepType: 'action' | 'llm_processing' | 'user_input';  // New: distinguish step types
     server: string;
     tool: string;
     parameters: Record<string, any>;

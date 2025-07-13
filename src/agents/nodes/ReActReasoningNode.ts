@@ -94,13 +94,39 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                 throw new Error('LLM processing decision requires llmTask, llmPrompt, and inputHistoryId');
             }
             
+            // Handle special case: "user_request" refers to original user request
+            let inputHistoryId = reasoning.inputHistoryId;
+            if (inputHistoryId === 'user_request') {
+                // Create an action history entry for the user's original request
+                const userRequestHistoryId = `user-request-${Date.now()}`;
+                
+                if (!shared.actionHistory) {
+                    shared.actionHistory = [];
+                }
+                
+                shared.actionHistory.push({
+                    step: 0,
+                    stepType: 'user_input',
+                    server: 'internal',
+                    tool: 'user_request',
+                    parameters: {},
+                    result: shared.userRequest || '',
+                    justification: 'Original user request content',
+                    success: true,
+                    historyId: userRequestHistoryId
+                });
+                
+                inputHistoryId = userRequestHistoryId;
+                console.log(`📝 Created user request history entry with ID: ${userRequestHistoryId}`);
+            }
+            
             shared.nextLLMRequest = {
                 task: reasoning.llmTask,
                 prompt: reasoning.llmPrompt,
-                inputHistoryId: reasoning.inputHistoryId
+                inputHistoryId: inputHistoryId
             };
             
-            console.log(`🧠 Prepared LLM processing: ${reasoning.llmTask} using history ID: ${reasoning.inputHistoryId}`);
+            console.log(`🧠 Prepared LLM processing: ${reasoning.llmTask} using history ID: ${inputHistoryId}`);
         }
         
         // Check if we've reached maximum steps
@@ -265,16 +291,17 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         prompt += `## Available Decisions:\n`;
         prompt += `1. **"continue"**: Use external tools for data gathering, file operations, web requests\n`;
-        prompt += `2. **"llm_processing"**: Process content using internal LLM capabilities (translate, summarize, analyze, transform, extract, etc.)\n`;
+        prompt += `2. **"llm_processing"**: Process content using internal LLM capabilities (translate, summarize, analyze, transform, extract, **fix code**, **rewrite code**, etc.)\n`;
         prompt += `3. **"complete"**: Task is finished, ready for final summary\n\n`;
         
         prompt += `## LLM Processing Instructions:\n`;
         prompt += `When using "llm_processing", you must specify:\n`;
-        prompt += `- "llmTask": Type of processing (translate, summarize, analyze, transform, extract, rewrite, etc.)\n`;
+        prompt += `- "llmTask": Type of processing (translate, summarize, analyze, transform, extract, rewrite, **fix_code**, **debug_code**, etc.)\n`;
         prompt += `- "llmPrompt": Specific instructions for the LLM (be detailed and clear)\n`;
-        prompt += `- "inputHistoryId": Reference to history entry containing content to process (use exact ID from brackets above)\n`;
-        prompt += `  * For single content: use one ID like "action-1-123456789"\n`;
-        prompt += `  * For multiple content: use comma-separated IDs like "action-1-123,action-2-456,action-3-789"\n\n`;
+        prompt += `- "inputHistoryId": Reference to content to process:\n`;
+        prompt += `  * Use "user_request" to process the original user request\n`;
+        prompt += `  * Use exact history ID from brackets above like "action-1-123456789"\n`;
+        prompt += `  * Use comma-separated IDs for multiple content like "action-1-123,action-2-456"\n\n`;
         
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;
@@ -288,8 +315,11 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         
         prompt += `## Guidelines:\n`;
         prompt += `- Use "continue" for external data gathering (fetch, search, file operations)\n`;
-        prompt += `- Use "llm_processing" for content transformation tasks on existing data\n`;
-        prompt += `- Use "complete" when the user's request has been fully accomplished\n`;
+        prompt += `- Use "llm_processing" for content transformation tasks on existing data:\n`;
+        prompt += `  * **Code fixes**: When user reports syntax errors, bugs, or needs code corrections\n`;
+        prompt += `  * **Content transformation**: Translate, summarize, analyze, rewrite, extract\n`;
+        prompt += `  * **Processing user input**: When user provides content that needs to be modified\n`;
+        prompt += `- Use "complete" when the user's request has been fully accomplished AND no content processing is needed\n`;
         prompt += `- Reference history IDs exactly as shown in brackets [like-this]\n`;
         prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
         prompt += `- **STRATEGIC APPROACH**: Choose actions that accomplish the most progress toward your goal\n`;
