@@ -51,6 +51,17 @@ export class LLMSettingTab extends PluginSettingTab {
                 }));
 
         new Setting(containerEl)
+            .setName('Gemini API Key')
+            .setDesc('Enter your Google Gemini API key for image generation capabilities')
+            .addText(text => text
+                .setPlaceholder('Enter Gemini API Key')
+                .setValue(this.plugin.settings.geminiApiKey)
+                .onChange(async (value) => {
+                    this.plugin.settings.geminiApiKey = value;
+                    await this.plugin.saveSettings();
+                }));
+
+        new Setting(containerEl)
             .setName('Output Folder')
             .setDesc('Folder to save output files')
             .addText(text => text

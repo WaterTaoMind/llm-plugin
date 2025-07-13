@@ -42,9 +42,18 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
         prompt: string,
         summary: string
     ): Promise<string | undefined> {
+        // Include generated images in the final result if any exist
+        let finalResult = summary;
+        
+        if (shared.generatedImages && shared.generatedImages.length > 0) {
+            console.log(`📸 Including ${shared.generatedImages.length} generated image(s) in final result`);
+            // The images will be handled separately in the UI layer
+            // Store them in shared state for retrieval
+        }
+        
         // Update shared state with final result
         Object.assign(shared, {
-            finalResult: summary
+            finalResult: finalResult
         });
         
         return undefined; // End of flow

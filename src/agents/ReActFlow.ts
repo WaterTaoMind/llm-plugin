@@ -5,6 +5,7 @@ import { ReActReasoningNode } from './nodes/ReActReasoningNode';
 import { ReActActionNode } from './nodes/ReActActionNode';
 import { LLMProcessingNode } from './nodes/LLMProcessingNode';
 import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
+import { GeminiImageGenerationLightNode } from './nodes/GeminiImageGenerationLightNode';
 
 /**
  * PocketFlow-based ReAct Agent using proper Flow class and node chaining
@@ -16,16 +17,19 @@ export class ReActFlow {
     private reasoningNode: ReActReasoningNode;
     private actionNode: ReActActionNode;
     private llmProcessingNode: LLMProcessingNode;
+    private imageGenerationNode: GeminiImageGenerationLightNode;
     private summarizeNode: SummarizeResultsNode;
 
     constructor(
         llmProvider: LLMProvider,
         mcpClient: MCPClient,
         modelConfig: ModelConfig,
+        geminiApiKey: string,
         // Retry configuration options
         reasoningRetries: number = 3,
         actionRetries: number = 3,
         llmProcessingRetries: number = 3,
+        imageGenerationRetries: number = 3,
         summarizeRetries: number = 2
     ) {
         // Initialize PocketFlow nodes
@@ -33,6 +37,7 @@ export class ReActFlow {
         this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
         this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
         this.llmProcessingNode = new LLMProcessingNode(llmProvider, llmProcessingRetries, 1);
+        this.imageGenerationNode = new GeminiImageGenerationLightNode(geminiApiKey, imageGenerationRetries, 2);
         this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
 
         // Set up PocketFlow node chaining with conditional branching
@@ -50,14 +55,16 @@ export class ReActFlow {
         // Step 1: Tool Discovery -> Reasoning
         this.discoverToolsNode.next(this.reasoningNode);
 
-        // Step 2: Reasoning -> 3-way routing
-        this.reasoningNode.on("continue", this.actionNode);           // External actions
+        // Step 2: Reasoning -> 4-way routing
+        this.reasoningNode.on("continue", this.actionNode);           // External MCP actions
         this.reasoningNode.on("llm_processing", this.llmProcessingNode); // Internal LLM processing
+        this.reasoningNode.on("generate_image", this.imageGenerationNode); // Gemini image generation
         this.reasoningNode.on("complete", this.summarizeNode);        // Final summary
 
-        // Step 3: Both action types loop back to Reasoning (for iterative ReAct)
+        // Step 3: All action types loop back to Reasoning (for iterative ReAct)
         this.actionNode.on("default", this.reasoningNode);
         this.llmProcessingNode.on("continue", this.reasoningNode);
+        this.imageGenerationNode.on("default", this.reasoningNode);
 
         // Step 4: Summarization is the end (no next node)
         // this.summarizeNode returns undefined in post() to end the flow
@@ -77,9 +84,9 @@ export class ReActFlow {
      * 
      * @param userRequest The user's request to process
      * @param maxSteps Maximum number of reasoning steps (default: 10)
-     * @returns Final response from the agent
+     * @returns Object containing final response and any generated images
      */
-    async execute(userRequest: string, maxSteps: number = 10): Promise<string> {
+    async execute(userRequest: string, maxSteps: number = 10): Promise<{ result: string; images?: string[] }> {
         console.log('🚀 PocketFlow ReAct Agent - Starting execution');
         console.log(`📝 User Request: ${userRequest}`);
         console.log(`🔢 Max Steps: ${maxSteps}`);
@@ -103,20 +110,33 @@ export class ReActFlow {
             const finalResult = sharedState.finalResult || 'Agent completed but no result was generated.';
             const actionCount = sharedState.actionHistory?.length || 0;
             const stepCount = sharedState.currentStep || 0;
+            
+            // Extract generated images if any
+            const generatedImages = sharedState.generatedImages?.map(img => img.imageBytes) || [];
 
             console.log(`\n🎉 PocketFlow ReAct Agent - Execution Complete`);
             console.log(`📊 Actions taken: ${actionCount}/${maxSteps}`);
             console.log(`⚡ Steps completed: ${stepCount}`);
             console.log(`📄 Result length: ${finalResult.length} characters`);
+            if (generatedImages.length > 0) {
+                console.log(`📸 Generated images: ${generatedImages.length}`);
+            }
 
-            return finalResult;
+            return {
+                result: finalResult,
+                images: generatedImages.length > 0 ? generatedImages : undefined
+            };
 
         } catch (error) {
             console.error('❌ PocketFlow Agent execution failed:', error);
 
             // Return whatever partial results we have
             const partialResult = sharedState.finalResult || this.generateErrorResponse(userRequest, error);
-            return partialResult;
+            const partialImages = sharedState.generatedImages?.map(img => img.imageBytes) || [];
+            return {
+                result: partialResult,
+                images: partialImages.length > 0 ? partialImages : undefined
+            };
         }
     }
 

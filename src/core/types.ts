@@ -37,6 +37,8 @@ export interface LLMPluginSettings {
     defaultPostProcessingPattern: string;
     debug: boolean;
     tavilyApiKey: string;
+    // Gemini Integration Settings
+    geminiApiKey: string;
     // MCP Settings
     mcpServers: MCPServerConfig[];
     mcpEnabled: boolean;
@@ -61,6 +63,8 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     defaultPostProcessingPattern: '',
     debug: false,
     tavilyApiKey: '',
+    // Gemini Integration Defaults
+    geminiApiKey: '',
     // MCP Default Settings
     mcpServers: [],
     mcpEnabled: true,
@@ -100,6 +104,7 @@ export interface LLMResponse {
     result: string;
     conversationId?: string;
     error?: string;
+    images?: string[]; // Base64-encoded generated images
     toolCalls?: MCPToolCall[]; // Tools LLM decided to call
 }
 

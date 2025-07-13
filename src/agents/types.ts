@@ -12,6 +12,24 @@ export interface AgentProgressEvent {
 
 export type ProgressCallback = (event: AgentProgressEvent) => void;
 
+// Generated media assets
+export interface GeneratedImage {
+    id: string;
+    prompt: string;
+    imageBytes: string; // Base64 encoded image data
+    format: string; // 'image/jpeg', 'image/png', etc.
+    aspectRatio: string;
+    safetyFiltered?: boolean;
+    safetyReason?: string;
+    generatedAt: number;
+}
+
+export interface ImageGenerationConfig {
+    aspectRatio?: string; // '1:1', '3:4', '4:3', '9:16', '16:9'
+    numberOfImages?: number;
+    safetyFilterLevel?: 'BLOCK_LOW_AND_ABOVE' | 'BLOCK_MEDIUM_AND_ABOVE' | 'BLOCK_ONLY_HIGH' | 'BLOCK_NONE';
+}
+
 export interface AgentSharedState {
     // Input
     userRequest?: string;
@@ -29,12 +47,20 @@ export interface AgentSharedState {
     goalStatus?: string;
     nextAction?: ActionDecision;
     
+    // LLM Processing
+    nextLLMRequest?: LLMProcessingRequest;
+    
     // Progress Tracking
     startTime?: number;
     progressCallback?: ProgressCallback;
     
     // Configuration
     modelConfig?: ModelConfig;
+    imageConfig?: ImageGenerationConfig;
+    
+    // Generated Media Assets
+    generatedImages?: GeneratedImage[];
+    currentImagePrompt?: string;
     
     // Final Result
     finalResult?: string;
@@ -70,7 +96,7 @@ export interface ActionDecision {
 
 export interface ReasoningResponse {
     reasoning: string;
-    decision: 'continue' | 'complete' | 'llm_processing';
+    decision: 'continue' | 'complete' | 'llm_processing' | 'generate_image';
     action?: ActionDecision;
     goalStatus: string;
     
@@ -78,6 +104,10 @@ export interface ReasoningResponse {
     llmTask?: string;           // Task identifier (translate, summarize, etc.)
     llmPrompt?: string;         // Crafted prompt for LLM
     inputHistoryId?: string;    // Reference to specific history entry
+    
+    // Image generation fields
+    imagePrompt?: string;       // Prompt for image generation
+    imageConfig?: ImageGenerationConfig;
 }
 
 export interface LLMProcessingRequest {
@@ -86,32 +116,6 @@ export interface LLMProcessingRequest {
     inputHistoryId: string;
 }
 
-export interface AgentSharedState {
-    // Input
-    userRequest?: string;
-    
-    // Tool Discovery
-    availableTools?: MCPTool[];
-    toolsByServer?: Record<string, MCPTool[]>;
-    toolServerMap?: Record<string, string>;
-    
-    // ReAct Process
-    currentStep?: number;
-    maxSteps?: number;
-    actionHistory?: ActionResult[];
-    currentReasoning?: string;
-    goalStatus?: string;
-    nextAction?: ActionDecision;
-    
-    // LLM Processing
-    nextLLMRequest?: LLMProcessingRequest;
-    
-    // Configuration
-    modelConfig?: ModelConfig;
-    
-    // Final Result
-    finalResult?: string;
-}
 
 export interface ModelConfig {
     reasoning: string;

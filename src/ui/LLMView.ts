@@ -268,9 +268,9 @@ export class LLMView extends ItemView {
             // For agent mode, the response.result includes the formatted result
             // For chat mode, just append normally
             if (effectiveMode === ProcessingMode.AGENT || prompt.startsWith('/agent')) {
-                this.finalizeProgressStreaming(prompt, response.result);
+                this.finalizeProgressStreaming(prompt, response.result, response.images);
             } else {
-                this.appendToChatHistory(prompt, response.result);
+                this.appendToChatHistory(prompt, response.result, response.images);
             }
 
             // Clear inputs (matching original behavior)
@@ -393,19 +393,19 @@ export class LLMView extends ItemView {
     /**
      * Finalize progress streaming with final result
      */
-    private finalizeProgressStreaming(prompt: string, result: string) {
+    private finalizeProgressStreaming(prompt: string, result: string, images?: string[]) {
         if (this.currentProgressMessage) {
             // Add completion indicator only (final result will be in dedicated section)
             const completionText = `\n---\n\n✅ **Task Completed Successfully**`;
             this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
             
             // Add integrated action buttons to the progress message
-            this.chatHistory.addProgressMessageActions(this.currentProgressMessage, result);
+            this.chatHistory.addProgressMessageActions(this.currentProgressMessage, result, images);
             
             this.currentProgressMessage = undefined;
         } else {
             // Fallback to normal chat history
-            this.appendToChatHistory(prompt, result);
+            this.appendToChatHistory(prompt, result, images);
         }
     }
 
@@ -575,7 +575,7 @@ export class LLMView extends ItemView {
         }
     }
 
-    private appendToChatHistory(prompt: string, response: string) {
+    private appendToChatHistory(prompt: string, response: string, images?: string[]) {
         // Add user message
         const userMessage: ChatMessage = {
             id: Date.now().toString(),
@@ -589,7 +589,8 @@ export class LLMView extends ItemView {
             id: (Date.now() + 1).toString(),
             type: 'assistant',
             content: response,
-            timestamp: new Date()
+            timestamp: new Date(),
+            images: images
         };
 
         this.chatHistory.addMessage(userMessage, (content) => content);

@@ -60,8 +60,13 @@ export class AgenticLLMService {
                 default: this.settings.defaultModel || 'gpt-4o-mini'
             };
             
-            // Initialize the TypeScript ReAct Flow system
-            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig);
+            // Initialize the TypeScript ReAct Flow system with Gemini API key
+            const geminiApiKey = this.settings.geminiApiKey || '';
+            if (!geminiApiKey) {
+                console.warn('⚠️ Gemini API key not configured - image generation will be disabled');
+            }
+            
+            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig, geminiApiKey);
             
             console.log('✅ TypeScript ReAct Flow initialized successfully');
         } catch (error) {
@@ -135,10 +140,11 @@ export class AgenticLLMService {
             const maxSteps = this.getMaxStepsForRequest(request);
             
             // Execute the TypeScript ReAct Agent
-            const result = await this.reActFlow.execute(request.prompt, maxSteps);
+            const agentResult = await this.reActFlow.execute(request.prompt, maxSteps);
 
             return {
-                result: result,
+                result: agentResult.result,
+                images: agentResult.images,
                 conversationId: request.conversationId
             };
 

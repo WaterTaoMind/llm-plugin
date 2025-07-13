@@ -42,8 +42,158 @@ export class ChatHistory {
             </div>
         `;
 
+        // Add images if present
+        if (message.images && message.images.length > 0) {
+            this.addImagesToMessage(messageEl, message.images);
+        }
+
         // Add action buttons
         this.addMessageActions(messageEl, message);
+    }
+
+    private addImagesToMessage(messageEl: HTMLElement, images: string[]) {
+        const chatContent = messageEl.querySelector('.llm-chat-content');
+        if (!chatContent) return;
+
+        const imagesContainer = chatContent.createDiv({ cls: 'llm-chat-images' });
+        
+        images.forEach((imageData, index) => {
+            const imageContainer = imagesContainer.createDiv({ cls: 'llm-chat-image-container' });
+            
+            // Create image element
+            const img = imageContainer.createEl('img', { 
+                cls: 'llm-chat-image',
+                attr: {
+                    src: `data:image/jpeg;base64,${imageData}`,
+                    alt: `Generated image ${index + 1}`,
+                    loading: 'lazy'
+                }
+            });
+            
+            // Add click handler for full-size view
+            img.onclick = () => this.showImageModal(imageData, index + 1);
+            
+            // Add image actions
+            const imageActions = imageContainer.createDiv({ cls: 'llm-image-actions' });
+            
+            // Download button
+            const downloadButton = imageActions.createEl('button', { 
+                cls: 'llm-image-action',
+                attr: { title: 'Download image' }
+            });
+            downloadButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+            downloadButton.onclick = (e) => {
+                e.stopPropagation();
+                this.downloadImage(imageData, index + 1);
+            };
+            
+            // Copy button
+            const copyImageButton = imageActions.createEl('button', { 
+                cls: 'llm-image-action',
+                attr: { title: 'Copy image to clipboard' }
+            });
+            copyImageButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2 2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+            copyImageButton.onclick = (e) => {
+                e.stopPropagation();
+                this.copyImageToClipboard(imageData, copyImageButton);
+            };
+        });
+    }
+
+    private showImageModal(imageData: string, imageNumber: number) {
+        // Create modal overlay
+        const modal = document.body.createDiv({ cls: 'llm-image-modal' });
+        
+        // Modal content
+        const modalContent = modal.createDiv({ cls: 'llm-image-modal-content' });
+        
+        // Close button
+        const closeButton = modalContent.createEl('button', { 
+            cls: 'llm-image-modal-close',
+            text: '×'
+        });
+        closeButton.onclick = () => modal.remove();
+        
+        // Image
+        const img = modalContent.createEl('img', {
+            cls: 'llm-image-modal-img',
+            attr: {
+                src: `data:image/jpeg;base64,${imageData}`,
+                alt: `Generated image ${imageNumber}`
+            }
+        });
+        
+        // Close on backdrop click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        };
+        
+        // Close on escape key
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                modal.remove();
+                document.removeEventListener('keydown', handleEscape);
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+    }
+
+    private downloadImage(imageData: string, imageNumber: number) {
+        try {
+            // Convert base64 to blob
+            const byteCharacters = atob(imageData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/jpeg' });
+            
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `generated-image-${imageNumber}-${Date.now()}.jpg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Failed to download image:', error);
+        }
+    }
+
+    private async copyImageToClipboard(imageData: string, button: HTMLElement) {
+        try {
+            // Convert base64 to blob
+            const byteCharacters = atob(imageData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/jpeg' });
+            
+            // Copy to clipboard
+            await navigator.clipboard.write([
+                new ClipboardItem({ 'image/jpeg': blob })
+            ]);
+            
+            button.classList.add('copied');
+            setTimeout(() => button.classList.remove('copied'), 1000);
+        } catch (error) {
+            console.error('Failed to copy image to clipboard:', error);
+            // Fallback: copy as data URL
+            try {
+                await navigator.clipboard.writeText(`data:image/jpeg;base64,${imageData}`);
+                button.classList.add('copied');
+                setTimeout(() => button.classList.remove('copied'), 1000);
+            } catch (fallbackError) {
+                console.error('Failed to copy image data URL:', fallbackError);
+            }
+        }
     }
 
     private addMessageActions(messageEl: HTMLElement, message: ChatMessage) {
@@ -152,7 +302,7 @@ export class ChatHistory {
     /**
      * Add hierarchical action buttons with embedded final result section
      */
-    addProgressMessageActions(messageEl: HTMLElement, finalResult: string): void {
+    addProgressMessageActions(messageEl: HTMLElement, finalResult: string, images?: string[]): void {
         const textEl = messageEl.querySelector('.llm-progress-text') as HTMLElement;
         
         if (!textEl) return;
@@ -163,6 +313,11 @@ export class ChatHistory {
             <div class="llm-final-result-header">Final Result</div>
             <div class="llm-final-result-content">${this.renderMarkdown(finalResult)}</div>
         `;
+        
+        // Add images if present
+        if (images && images.length > 0) {
+            this.addImagesToProgressMessage(finalResultSection, images);
+        }
         
         // Add action buttons under final result section
         const finalResultActions = finalResultSection.createDiv({ cls: 'llm-message-actions' });
@@ -255,6 +410,55 @@ export class ChatHistory {
             .replace(/\n{3,}/g, '\n\n')
             // Trim whitespace
             .trim();
+    }
+
+    /**
+     * Add images specifically to progress message sections
+     */
+    private addImagesToProgressMessage(container: HTMLElement, images: string[]) {
+        const imagesContainer = container.createDiv({ cls: 'llm-chat-images' });
+        
+        images.forEach((imageData, index) => {
+            const imageContainer = imagesContainer.createDiv({ cls: 'llm-chat-image-container' });
+            
+            // Create image element
+            const img = imageContainer.createEl('img', { 
+                cls: 'llm-chat-image',
+                attr: {
+                    src: `data:image/jpeg;base64,${imageData}`,
+                    alt: `Generated image ${index + 1}`,
+                    loading: 'lazy'
+                }
+            });
+            
+            // Add click handler for full-size view
+            img.onclick = () => this.showImageModal(imageData, index + 1);
+            
+            // Add image actions
+            const imageActions = imageContainer.createDiv({ cls: 'llm-image-actions' });
+            
+            // Download button
+            const downloadButton = imageActions.createEl('button', { 
+                cls: 'llm-image-action',
+                attr: { title: 'Download image' }
+            });
+            downloadButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+            downloadButton.onclick = (e) => {
+                e.stopPropagation();
+                this.downloadImage(imageData, index + 1);
+            };
+            
+            // Copy button
+            const copyImageButton = imageActions.createEl('button', { 
+                cls: 'llm-image-action',
+                attr: { title: 'Copy image to clipboard' }
+            });
+            copyImageButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
+            copyImageButton.onclick = (e) => {
+                e.stopPropagation();
+                this.copyImageToClipboard(imageData, copyImageButton);
+            };
+        });
     }
 
     /**
