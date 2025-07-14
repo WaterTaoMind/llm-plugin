@@ -22,6 +22,7 @@ export interface GeneratedImage {
     safetyFiltered?: boolean;
     safetyReason?: string;
     generatedAt: number;
+    localFilePath?: string; // NEW: Local file system path for saved image
 }
 
 export interface ImageGenerationConfig {
@@ -60,7 +61,16 @@ export interface AgentSharedState {
     
     // Generated Media Assets
     generatedImages?: GeneratedImage[];
+    generatedImagePaths?: string[]; // NEW: Absolute paths to saved image files
     currentImagePrompt?: string;
+    
+    // Configuration & Filesystem
+    mcpConfig?: {
+        workingDirectory?: string;
+        // Other MCP configuration options
+    };
+    pluginWorkingDir?: string; // Obsidian plugin working directory
+    mcpClient?: any; // MCP client instance for filesystem operations
     
     // Final Result
     finalResult?: string;

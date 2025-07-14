@@ -21,10 +21,11 @@ export class ReActFlow {
     private summarizeNode: SummarizeResultsNode;
 
     constructor(
-        llmProvider: LLMProvider,
-        mcpClient: MCPClient,
-        modelConfig: ModelConfig,
-        geminiApiKey: string,
+        private llmProvider: LLMProvider,
+        private mcpClient: MCPClient,
+        private modelConfig: ModelConfig,
+        private geminiApiKey: string,
+        private pluginDataPath?: string, // NEW: Plugin data directory for settings.json access
         // Retry configuration options
         reasoningRetries: number = 3,
         actionRetries: number = 3,
@@ -99,7 +100,11 @@ export class ReActFlow {
             actionHistory: [],
             modelConfig: undefined, // Will be set by nodes if needed
             startTime: Date.now(),
-            progressCallback: this.progressCallback
+            progressCallback: this.progressCallback,
+            // NEW: Configuration and filesystem support
+            mcpConfig: this.loadMCPConfig(),
+            pluginWorkingDir: this.getPluginWorkingDir(),
+            mcpClient: this.mcpClient
         };
 
         try {
@@ -149,6 +154,93 @@ export class ReActFlow {
         return `I encountered an error while processing your request: "${userRequest}"\n\n` +
                `Error: ${errorMessage}\n\n` +
                `I apologize for the inconvenience. Please try rephrasing your request or contact support if the issue persists.`;
+    }
+
+    /**
+     * Load MCP configuration from settings.json
+     */
+    private loadMCPConfig(): { workingDirectory?: string } | undefined {
+        try {
+            // Import Node.js filesystem module
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Get plugin data path (passed from AgenticLLMService via constructor)
+            const pluginDataPath = this.getPluginDataPath();
+            if (!pluginDataPath) {
+                console.warn('Plugin data path not available for MCP config loading');
+                return undefined;
+            }
+            
+            const settingsPath = path.join(pluginDataPath, 'settings.json');
+            
+            // Check if settings.json exists
+            if (!fs.existsSync(settingsPath)) {
+                console.log('📋 No settings.json found - MCP filesystem operations will use fallback');
+                return undefined;
+            }
+            
+            // Load and parse settings.json
+            const settingsContent = fs.readFileSync(settingsPath, 'utf-8');
+            const settings = JSON.parse(settingsContent);
+            
+            // Extract MCP servers configuration
+            const mcpServers = settings.mcpServers || {};
+            
+            // Look for filesystem server to get working directory
+            const filesystemServer = mcpServers.filesystem || mcpServers['filesystem'];
+            if (filesystemServer && filesystemServer.args) {
+                // Extract working directory from filesystem server args
+                // Format: ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/path/to/directory"]
+                const args = Array.isArray(filesystemServer.args) ? filesystemServer.args : [];
+                const workingDirectory = args[args.length - 1]; // Last argument is usually the directory
+                
+                if (workingDirectory && workingDirectory.startsWith('/')) {
+                    console.log(`📋 Loaded MCP working directory from settings: ${workingDirectory}`);
+                    return { workingDirectory };
+                }
+            }
+            
+            console.log('📋 No MCP filesystem working directory found in settings.json');
+            return undefined;
+            
+        } catch (error) {
+            console.warn('Failed to load MCP config from settings.json:', error);
+            return undefined;
+        }
+    }
+
+    /**
+     * Get plugin working directory
+     */
+    private getPluginWorkingDir(): string | undefined {
+        try {
+            // Get plugin data path from the dependency injection context
+            const pluginDataPath = this.getPluginDataPath();
+            
+            if (pluginDataPath) {
+                console.log(`📁 Using plugin working directory: ${pluginDataPath}`);
+                return pluginDataPath;
+            }
+            
+            // Fallback to current working directory
+            const fallbackDir = process.cwd();
+            console.log(`📁 Using fallback working directory: ${fallbackDir}`);
+            return fallbackDir;
+            
+        } catch (error) {
+            console.warn('Failed to get plugin working directory:', error);
+            return process.cwd(); // Last resort fallback
+        }
+    }
+    
+    /**
+     * Get plugin data path (to be injected by AgenticLLMService)
+     */
+    private getPluginDataPath(): string | undefined {
+        // This will be set via dependency injection from AgenticLLMService
+        // which has access to the plugin's data directory
+        return this.pluginDataPath;
     }
 
     /**

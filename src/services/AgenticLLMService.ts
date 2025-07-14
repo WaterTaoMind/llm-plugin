@@ -66,7 +66,10 @@ export class AgenticLLMService {
                 console.warn('⚠️ Gemini API key not configured - image generation will be disabled');
             }
             
-            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig, geminiApiKey);
+            // Get plugin data path for settings.json access from MCP client service
+            const pluginDataPath = this.getPluginDataPath();
+            
+            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig, geminiApiKey, pluginDataPath);
             
             console.log('✅ TypeScript ReAct Flow initialized successfully');
         } catch (error) {
@@ -201,6 +204,41 @@ export class AgenticLLMService {
         } catch (error) {
             throw new Error(`LLM API failed: ${error instanceof Error ? error.message : String(error)}`);
         }
+    }
+
+    /**
+     * Get plugin data directory path from MCP client service
+     */
+    private getPluginDataPath(): string | undefined {
+        if (!this.mcpClientService) {
+            console.warn('MCP client service not available for plugin data path access');
+            return undefined;
+        }
+        
+        try {
+            // Access the private method through type assertion
+            // This is safe since we're in the same codebase and know the implementation
+            const mcpService = this.mcpClientService as any;
+            if (mcpService.getPluginDataPath) {
+                return mcpService.getPluginDataPath();
+            }
+            
+            // Fallback: try to access the same logic directly
+            const app = mcpService.app;
+            if (app) {
+                const adapter = app.vault.adapter;
+                if (adapter && 'basePath' in adapter) {
+                    const vaultPath = (adapter as any).basePath || '';
+                    if (vaultPath) {
+                        return `${vaultPath}/.obsidian/plugins/unofficial-llm-integration`;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to get plugin data path from MCP client service:', error);
+        }
+        
+        return undefined;
     }
 
     /**
