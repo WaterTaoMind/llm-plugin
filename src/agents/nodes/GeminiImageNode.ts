@@ -15,6 +15,7 @@ import {
 interface ImageRequest {
     type: 'generation' | 'editing';
     prompt: string;
+    enhancedPrompt?: string; // LLM-enhanced version of the prompt
     config: ImageGenerationConfig;
     sourceImage?: {
         path: string;
@@ -98,7 +99,8 @@ export class GeminiImageNode extends Node<AgentSharedState> {
 
         return {
             type: 'generation',
-            prompt: enhancedPrompt,
+            prompt: basePrompt, // Keep original prompt for reference
+            enhancedPrompt: enhancedPrompt, // Store enhanced prompt for metadata and generation
             config
         };
     }
@@ -181,10 +183,13 @@ export class GeminiImageNode extends Node<AgentSharedState> {
     private async executeGeneration(request: ImageRequest): Promise<GeneratedImage[]> {
         console.log('🖼️ Executing image generation');
         
+        // Use enhanced prompt for generation if available, fallback to original
+        const promptToUse = request.enhancedPrompt || request.prompt;
+        
         // Use the official Google GenAI SDK as per documentation
         const response = await this.geminiClient.models.generateContent({
             model: 'gemini-2.0-flash-preview-image-generation',
-            contents: [{ parts: [{ text: request.prompt }] }],
+            contents: [{ parts: [{ text: promptToUse }] }],
             config: {
                 responseModalities: ['TEXT', 'IMAGE']
             }
@@ -239,6 +244,7 @@ export class GeminiImageNode extends Node<AgentSharedState> {
                             const processedImage: GeneratedImage = {
                                 id: `gemini-${type}-${Date.now()}-${candidateIndex}-${partIndex}`,
                                 prompt: request.prompt,
+                                enhancedPrompt: request.enhancedPrompt, // Store enhanced prompt for metadata
                                 imageBytes: part.inlineData.data,
                                 format: part.inlineData.mimeType,
                                 aspectRatio: request.config.aspectRatio || '1:1',
@@ -286,6 +292,14 @@ export class GeminiImageNode extends Node<AgentSharedState> {
                 const relativePath = this.convertToRelativePath(imagePath, shared);
                 image.localFilePath = relativePath;
                 console.log(`✅ Successfully saved image ${image.id} to: ${imagePath} (relative: ${relativePath})`);
+                
+                // NEW: Save metadata with enhanced prompts (safe, non-breaking)
+                try {
+                    await this.saveImageMetadata(image, imagePath, shared);
+                } catch (metadataError) {
+                    console.warn(`⚠️ Failed to save metadata for ${image.id}: ${metadataError.message}`);
+                    // Continue - metadata failure shouldn't break image generation
+                }
             } catch (error) {
                 const errorMsg = `Failed to save image ${image.id}: ${error.message}`;
                 console.error(`❌ ${errorMsg}`);
@@ -983,6 +997,47 @@ Respond with ONLY the enhanced editing prompt, no explanations or quotes.`;
         }
     }
 
+
+    /**
+     * Save metadata JSON file alongside the image (safe, non-breaking)
+     */
+    private async saveImageMetadata(image: GeneratedImage, imagePath: string, shared: AgentSharedState): Promise<void> {
+        try {
+            const fs = require('fs').promises;
+            const path = require('path');
+            
+            // Only save metadata if we have enhanced prompts
+            if (!image.enhancedPrompt) {
+                console.log(`📋 No enhanced prompt for ${image.id}, skipping metadata save`);
+                return;
+            }
+            
+            // Create metadata file path (.json extension)
+            const imageDir = path.dirname(imagePath);
+            const imageBasename = path.basename(imagePath, path.extname(imagePath));
+            const metadataPath = path.join(imageDir, `${imageBasename}.json`);
+            
+            // Create metadata object
+            const metadata = {
+                imageId: image.id,
+                originalPrompt: image.prompt,
+                enhancedPrompt: image.enhancedPrompt,
+                generatedAt: new Date(image.generatedAt).toISOString(),
+                aspectRatio: image.aspectRatio,
+                format: image.format,
+                imageFile: path.basename(imagePath),
+                version: "1.0"
+            };
+            
+            // Save metadata file
+            await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+            console.log(`📋 Saved metadata: ${metadataPath}`);
+            
+        } catch (error) {
+            // Safe failure - don't break image generation
+            throw new Error(`Metadata save failed: ${error.message}`);
+        }
+    }
 
     /**
      * Truncate text for progress display

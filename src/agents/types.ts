@@ -16,6 +16,7 @@ export type ProgressCallback = (event: AgentProgressEvent) => void;
 export interface GeneratedImage {
     id: string;
     prompt: string;
+    enhancedPrompt?: string; // NEW: LLM-enhanced prompt used for generation
     imageBytes: string; // Base64 encoded image data
     format: string; // 'image/jpeg', 'image/png', etc.
     aspectRatio: string;
