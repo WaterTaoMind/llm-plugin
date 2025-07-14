@@ -5,7 +5,7 @@ import { ReActReasoningNode } from './nodes/ReActReasoningNode';
 import { ReActActionNode } from './nodes/ReActActionNode';
 import { LLMProcessingNode } from './nodes/LLMProcessingNode';
 import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
-import { GeminiImageGenerationLightNode } from './nodes/GeminiImageGenerationLightNode';
+import { GeminiImageNode } from './nodes/GeminiImageNode';
 
 /**
  * PocketFlow-based ReAct Agent using proper Flow class and node chaining
@@ -17,7 +17,7 @@ export class ReActFlow {
     private reasoningNode: ReActReasoningNode;
     private actionNode: ReActActionNode;
     private llmProcessingNode: LLMProcessingNode;
-    private imageGenerationNode: GeminiImageGenerationLightNode;
+    private imageNode: GeminiImageNode;
     private summarizeNode: SummarizeResultsNode;
 
     constructor(
@@ -38,7 +38,7 @@ export class ReActFlow {
         this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
         this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
         this.llmProcessingNode = new LLMProcessingNode(llmProvider, llmProcessingRetries, 1);
-        this.imageGenerationNode = new GeminiImageGenerationLightNode(geminiApiKey, llmProvider, imageGenerationRetries, 2);
+        this.imageNode = new GeminiImageNode(geminiApiKey, llmProvider, imageGenerationRetries, 2);
         this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
 
         // Set up PocketFlow node chaining with conditional branching
@@ -56,16 +56,16 @@ export class ReActFlow {
         // Step 1: Tool Discovery -> Reasoning
         this.discoverToolsNode.next(this.reasoningNode);
 
-        // Step 2: Reasoning -> 4-way routing
+        // Step 2: Reasoning -> 4-way routing (UNIFIED IMAGE PROCESSING)
         this.reasoningNode.on("continue", this.actionNode);           // External MCP actions
         this.reasoningNode.on("llm_processing", this.llmProcessingNode); // Internal LLM processing
-        this.reasoningNode.on("generate_image", this.imageGenerationNode); // Gemini image generation
+        this.reasoningNode.on("process_image", this.imageNode);       // Unified image processing (generation + editing)
         this.reasoningNode.on("complete", this.summarizeNode);        // Final summary
 
         // Step 3: All action types loop back to Reasoning (for iterative ReAct)
         this.actionNode.on("default", this.reasoningNode);
         this.llmProcessingNode.on("continue", this.reasoningNode);
-        this.imageGenerationNode.on("default", this.reasoningNode);
+        this.imageNode.on("default", this.reasoningNode);
 
         // Step 4: Summarization is the end (no next node)
         // this.summarizeNode returns undefined in post() to end the flow

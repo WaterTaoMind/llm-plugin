@@ -9,18 +9,34 @@ import {
 } from '../types';
 
 /**
- * Interface for image generation request data
+ * Interface for unified image processing request data
+ * Supports both generation (text → image) and editing (text + image → image)
  */
-interface ImageGenerationRequest {
+interface ImageRequest {
+    type: 'generation' | 'editing';
     prompt: string;
     config: ImageGenerationConfig;
+    sourceImage?: {
+        path: string;
+        data: string;          // Base64 encoded image data
+        mimeType: string;      // 'image/jpeg', 'image/png', etc.
+    };
+    editInstructions?: string; // Specific editing instructions
 }
 
 /**
- * PocketFlow Node for Gemini image generation using official Google GenAI SDK
+ * Legacy interface for backward compatibility
+ */
+interface ImageGenerationRequest extends ImageRequest {
+    // Maintains compatibility with existing code
+}
+
+/**
+ * Unified PocketFlow Node for Gemini image generation and editing using official Google GenAI SDK
+ * Supports both text-to-image generation and text+image-to-image editing
  * Uses the official SDK for better compatibility and reliability
  */
-export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
+export class GeminiImageNode extends Node<AgentSharedState> {
     private geminiClient: GoogleGenAI;
 
     constructor(
@@ -34,11 +50,28 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
     }
 
     /**
-     * Preparation phase: Extract image generation parameters from shared state
-     * Uses LLM-based prompt enhancement for high-quality results
+     * Preparation phase: Determine request type and prepare image request
+     * Supports both generation (text → image) and editing (text + image → image)
      */
-    async prep(shared: AgentSharedState): Promise<ImageGenerationRequest> {
-        console.log('🎨 GeminiImageGenerationLightNode: Preparing image generation request');
+    async prep(shared: AgentSharedState): Promise<ImageRequest> {
+        console.log('🎨 GeminiImageNode: Preparing unified image request');
+        
+        // Determine if this is generation or editing
+        const requestType = this.detectRequestType(shared);
+        console.log(`📋 Detected request type: ${requestType}`);
+        
+        if (requestType === 'editing') {
+            return await this.prepareEditingRequest(shared);
+        } else {
+            return await this.prepareGenerationRequest(shared);
+        }
+    }
+
+    /**
+     * Prepare image generation request (existing logic)
+     */
+    private async prepareGenerationRequest(shared: AgentSharedState): Promise<ImageRequest> {
+        console.log('🖼️ Preparing image generation request');
         
         // Extract image prompt from user request or current context
         const basePrompt = this.extractImagePrompt(shared);
@@ -48,7 +81,7 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
         
         // Get configuration with sensible defaults optimized for quality
         const config: ImageGenerationConfig = {
-            aspectRatio: shared.imageConfig?.aspectRatio || '16:9', // Better for landscapes
+            aspectRatio: shared.imageConfig?.aspectRatio || '16:9',
             numberOfImages: shared.imageConfig?.numberOfImages || 1,
             safetyFilterLevel: shared.imageConfig?.safetyFilterLevel || 'BLOCK_MEDIUM_AND_ABOVE'
         };
@@ -56,68 +89,172 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
         // Emit progress event
         this.emitProgress(shared, 'action_start', {
             action: 'generate_image',
-            tool: 'generate_images',
+            tool: 'process_image',
             server: 'gemini-sdk',
             justification: 'Generating visual content using Gemini image generation API',
             prompt: this.truncateText(enhancedPrompt, 100),
             config: config
         });
 
-        return { prompt: enhancedPrompt, config };
+        return {
+            type: 'generation',
+            prompt: enhancedPrompt,
+            config
+        };
     }
 
     /**
-     * Execution phase: Call Gemini API to generate images using official SDK
+     * Prepare image editing request (new functionality)
      */
-    async exec(request: ImageGenerationRequest): Promise<GeneratedImage[]> {
-        console.log('🔧 GeminiImageGenerationLightNode: Executing image generation (Official SDK)');
+    private async prepareEditingRequest(shared: AgentSharedState): Promise<ImageRequest> {
+        console.log('✏️ Preparing image editing request');
+        
+        const userRequest = shared.userRequest || '';
+        
+        // Resolve source image
+        const sourceImage = await this.resolveSourceImage(userRequest, shared);
+        if (!sourceImage) {
+            throw new Error('No source image found for editing request');
+        }
+        
+        // Extract editing instructions
+        const editInstructions = this.extractEditInstructions(userRequest);
+        
+        // Enhance editing prompt
+        const enhancedPrompt = await this.enhanceEditingPrompt(editInstructions, shared);
+        
+        // Use same config as generation
+        const config: ImageGenerationConfig = {
+            aspectRatio: shared.imageConfig?.aspectRatio || '16:9',
+            numberOfImages: shared.imageConfig?.numberOfImages || 1,
+            safetyFilterLevel: shared.imageConfig?.safetyFilterLevel || 'BLOCK_MEDIUM_AND_ABOVE'
+        };
+
+        // Emit progress event
+        this.emitProgress(shared, 'action_start', {
+            action: 'edit_image',
+            tool: 'process_image',
+            server: 'gemini-sdk',
+            justification: 'Editing image using Gemini image editing API',
+            prompt: this.truncateText(enhancedPrompt, 100),
+            sourceImage: sourceImage.path,
+            config: config
+        });
+
+        return {
+            type: 'editing',
+            prompt: enhancedPrompt,
+            config,
+            sourceImage,
+            editInstructions
+        };
+    }
+
+    /**
+     * Execution phase: Call Gemini API for image processing using official SDK
+     * Supports both generation and editing based on request type
+     */
+    async exec(request: ImageRequest): Promise<GeneratedImage[]> {
+        console.log(`🔧 GeminiImageNode: Executing ${request.type} (Official SDK)`);
         console.log(`📝 Prompt: ${this.truncateText(request.prompt, 200)}`);
         console.log(`⚙️ Config:`, request.config);
 
         if (!this.apiKey) {
-            throw new Error('Gemini API key is required for image generation');
+            throw new Error('Gemini API key is required for image processing');
         }
 
         try {
-            // Use the official Google GenAI SDK as per documentation
-            const response = await this.geminiClient.models.generateContent({
-                model: 'gemini-2.0-flash-preview-image-generation',
-                contents: [{ parts: [{ text: request.prompt }] }],
-                config: {
-                    responseModalities: ['TEXT', 'IMAGE']
-                }
-            });
-            const generatedImages: GeneratedImage[] = [];
-            
-            if (response.candidates) {
-                for (const [candidateIndex, candidate] of response.candidates.entries()) {
-                    if (candidate.content?.parts) {
-                        for (const [partIndex, part] of candidate.content.parts.entries()) {
-                            if (part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data) {
-                                const generatedImage: GeneratedImage = {
-                                    id: `gemini-img-sdk-${Date.now()}-${candidateIndex}-${partIndex}`,
-                                    prompt: request.prompt,
-                                    imageBytes: part.inlineData.data,
-                                    format: part.inlineData.mimeType,
-                                    aspectRatio: request.config.aspectRatio || '1:1',
-                                    safetyFiltered: candidate.finishReason === 'SAFETY',
-                                    safetyReason: candidate.finishReason === 'SAFETY' ? 'Content filtered by safety settings' : undefined,
-                                    generatedAt: Date.now()
-                                };
-                                generatedImages.push(generatedImage);
-                            }
+            if (request.type === 'editing') {
+                return await this.executeEditing(request);
+            } else {
+                return await this.executeGeneration(request);
+            }
+        } catch (error) {
+            console.error(`❌ Image ${request.type} failed:`, error);
+            throw new Error(`Gemini image ${request.type} failed: ${error.message}`);
+        }
+    }
+
+    /**
+     * Execute image generation (text → image)
+     */
+    private async executeGeneration(request: ImageRequest): Promise<GeneratedImage[]> {
+        console.log('🖼️ Executing image generation');
+        
+        // Use the official Google GenAI SDK as per documentation
+        const response = await this.geminiClient.models.generateContent({
+            model: 'gemini-2.0-flash-preview-image-generation',
+            contents: [{ parts: [{ text: request.prompt }] }],
+            config: {
+                responseModalities: ['TEXT', 'IMAGE']
+            }
+        });
+        
+        return this.processResponse(response, request, 'generation');
+    }
+
+    /**
+     * Execute image editing (text + image → image)
+     */
+    private async executeEditing(request: ImageRequest): Promise<GeneratedImage[]> {
+        console.log('✏️ Executing image editing');
+        
+        if (!request.sourceImage) {
+            throw new Error('Source image required for editing');
+        }
+        
+        // Use the official Google GenAI SDK with text + image input
+        const response = await this.geminiClient.models.generateContent({
+            model: 'gemini-2.0-flash-preview-image-generation',
+            contents: [{
+                parts: [
+                    { text: request.prompt },
+                    {
+                        inlineData: {
+                            mimeType: request.sourceImage.mimeType,
+                            data: request.sourceImage.data
+                        }
+                    }
+                ]
+            }],
+            config: {
+                responseModalities: ['TEXT', 'IMAGE']
+            }
+        });
+        
+        return this.processResponse(response, request, 'editing');
+    }
+
+    /**
+     * Process API response and extract images
+     */
+    private processResponse(response: any, request: ImageRequest, type: 'generation' | 'editing'): GeneratedImage[] {
+        const processedImages: GeneratedImage[] = [];
+        
+        if (response.candidates) {
+            for (const [candidateIndex, candidate] of response.candidates.entries()) {
+                if (candidate.content?.parts) {
+                    for (const [partIndex, part] of candidate.content.parts.entries()) {
+                        if (part.inlineData?.mimeType?.startsWith('image/') && part.inlineData.data) {
+                            const processedImage: GeneratedImage = {
+                                id: `gemini-${type}-${Date.now()}-${candidateIndex}-${partIndex}`,
+                                prompt: request.prompt,
+                                imageBytes: part.inlineData.data,
+                                format: part.inlineData.mimeType,
+                                aspectRatio: request.config.aspectRatio || '1:1',
+                                safetyFiltered: candidate.finishReason === 'SAFETY',
+                                safetyReason: candidate.finishReason === 'SAFETY' ? 'Content filtered by safety settings' : undefined,
+                                generatedAt: Date.now()
+                            };
+                            processedImages.push(processedImage);
                         }
                     }
                 }
             }
-
-            console.log(`✅ Generated ${generatedImages.length} images using official SDK`);
-            return generatedImages;
-
-        } catch (error) {
-            console.error('❌ Image generation failed:', error);
-            throw new Error(`Gemini image generation failed: ${error.message}`);
         }
+
+        console.log(`✅ Processed ${processedImages.length} images via ${type}`);
+        return processedImages;
     }
 
     /**
@@ -125,10 +262,10 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
      */
     async post(
         shared: AgentSharedState,
-        request: ImageGenerationRequest,
+        request: ImageRequest,
         images: GeneratedImage[]
     ): Promise<string | undefined> {
-        console.log('📋 GeminiImageGenerationLightNode: Post-processing results');
+        console.log(`📋 GeminiImageNode: Post-processing ${request.type} results`);
 
         // Update shared state with generated images
         if (!shared.generatedImages) {
@@ -179,7 +316,7 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
             step: shared.currentStep || 0,
             stepType: 'action' as const,
             server: 'gemini-sdk',
-            tool: 'generate_images',
+            tool: request.type === 'editing' ? 'edit_images' : 'generate_images',
             parameters: {
                 prompt: request.prompt,
                 aspectRatio: request.config.aspectRatio,
@@ -396,7 +533,8 @@ Respond with ONLY the enhanced prompt, no explanations or quotes.`;
      */
     private async saveImageToFile(image: GeneratedImage, shared: AgentSharedState): Promise<string> {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `generated-image-${timestamp}-${image.id.split('-').pop()}.jpg`;
+        const imageType = image.id.includes('editing') ? 'edited' : 'generated';
+        const filename = `${imageType}-image-${timestamp}-${image.id.split('-').pop()}.jpg`;
         
         // Get target directory (MCP or plugin fallback)
         const imageDir = await this.getImageSaveDirectory(shared);
@@ -579,6 +717,257 @@ Respond with ONLY the enhanced prompt, no explanations or quotes.`;
             console.warn('Failed to convert to relative path:', error);
             // Fallback: return just the filename
             return absolutePath.split('/').pop() || absolutePath;
+        }
+    }
+
+    /**
+     * Detect whether request is for generation or editing
+     */
+    private detectRequestType(shared: AgentSharedState): 'generation' | 'editing' {
+        const userRequest = shared.userRequest?.toLowerCase() || '';
+        
+        // Check for explicit image paths first (user provided)
+        const hasImagePath = this.extractImagePath(userRequest);
+        
+        // Check for edit keywords
+        const editKeywords = ['edit', 'modify', 'change', 'improve', 'enhance', 'style', 'transform', 'update', 'alter'];
+        const hasEditIntent = editKeywords.some(keyword => userRequest.includes(keyword));
+        
+        // If has image path OR (edit keywords AND previous images exist)
+        if (hasImagePath || (hasEditIntent && this.hasAvailableImages(shared))) {
+            return 'editing';
+        }
+        
+        return 'generation';
+    }
+
+    /**
+     * Extract image path from user request
+     */
+    private extractImagePath(userRequest: string): string | null {
+        // Extract various path formats:
+        // "edit /path/to/image.jpg to make it..."
+        // "modify image at ./images/photo.png"
+        // "change images/sunset.jpg color"
+        
+        const pathPatterns = [
+            /(?:edit|modify|change|improve|enhance)\s+(?:image\s+at\s+|)([^\s]+\.(?:jpg|jpeg|png|webp))/i,
+            /([^\s]+\.(?:jpg|jpeg|png|webp))/i  // Any image file mentioned
+        ];
+        
+        for (const pattern of pathPatterns) {
+            const match = userRequest.match(pattern);
+            if (match) {
+                return match[1];
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Check if there are available images to edit
+     */
+    private hasAvailableImages(shared: AgentSharedState): boolean {
+        return !!(shared.generatedImages && shared.generatedImages.length > 0) ||
+               !!(shared.generatedImagePaths && shared.generatedImagePaths.length > 0);
+    }
+
+    /**
+     * Resolve source image for editing
+     */
+    private async resolveSourceImage(userRequest: string, shared: AgentSharedState): Promise<{ path: string; data: string; mimeType: string } | null> {
+        
+        // Priority 1: User-provided path
+        const explicitPath = this.extractImagePath(userRequest);
+        if (explicitPath) {
+            return await this.loadImageFromPath(explicitPath, shared);
+        }
+        
+        // Priority 2: Reference to previous images
+        if (/last|previous|recent/.test(userRequest)) {
+            return this.getLastGeneratedImage(shared);
+        }
+        
+        // Priority 3: Filename reference
+        const fileMatch = userRequest.match(/[\w-]+\.(?:jpg|jpeg|png|webp)/i);
+        if (fileMatch) {
+            return await this.findImageByFilename(fileMatch[0], shared);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Load image from file path
+     */
+    private async loadImageFromPath(imagePath: string, shared: AgentSharedState): Promise<{ path: string; data: string; mimeType: string }> {
+        const fs = require('fs').promises;
+        const path = require('path');
+        
+        let resolvedPath: string;
+        
+        if (path.isAbsolute(imagePath)) {
+            // Absolute path - use directly
+            resolvedPath = imagePath;
+        } else {
+            // Relative path - resolve against working directories
+            const possiblePaths = [
+                path.resolve(shared.mcpConfig?.workingDirectory || '', imagePath),
+                path.resolve(shared.pluginWorkingDir || '', imagePath),
+                path.resolve(process.cwd(), imagePath)
+            ];
+            
+            resolvedPath = await this.findExistingPath(possiblePaths);
+        }
+        
+        // Load and encode image
+        const imageBuffer = await fs.readFile(resolvedPath);
+        const base64Data = imageBuffer.toString('base64');
+        const mimeType = this.detectMimeType(resolvedPath);
+        
+        console.log(`📁 Loaded source image: ${resolvedPath} (${imageBuffer.length} bytes)`);
+        
+        return {
+            path: resolvedPath,
+            data: base64Data,
+            mimeType
+        };
+    }
+
+    /**
+     * Find first existing path from list
+     */
+    private async findExistingPath(paths: string[]): Promise<string> {
+        const fs = require('fs').promises;
+        
+        for (const path of paths) {
+            try {
+                await fs.access(path);
+                return path;
+            } catch {
+                // Continue to next path
+            }
+        }
+        
+        throw new Error(`Image file not found in any of these locations: ${paths.join(', ')}`);
+    }
+
+    /**
+     * Detect MIME type from file extension
+     */
+    private detectMimeType(filePath: string): string {
+        const ext = filePath.toLowerCase().split('.').pop();
+        switch (ext) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'webp':
+                return 'image/webp';
+            default:
+                return 'image/jpeg'; // Default fallback
+        }
+    }
+
+    /**
+     * Get last generated image for editing
+     */
+    private getLastGeneratedImage(shared: AgentSharedState): { path: string; data: string; mimeType: string } | null {
+        if (!shared.generatedImages || shared.generatedImages.length === 0) {
+            return null;
+        }
+        
+        const lastImage = shared.generatedImages[shared.generatedImages.length - 1];
+        return {
+            path: lastImage.localFilePath || 'generated-image',
+            data: lastImage.imageBytes,
+            mimeType: lastImage.format
+        };
+    }
+
+    /**
+     * Find image by filename
+     */
+    private async findImageByFilename(filename: string, shared: AgentSharedState): Promise<{ path: string; data: string; mimeType: string } | null> {
+        // Search in generated images first
+        if (shared.generatedImages) {
+            for (const image of shared.generatedImages) {
+                if (image.localFilePath?.includes(filename)) {
+                    return {
+                        path: image.localFilePath,
+                        data: image.imageBytes,
+                        mimeType: image.format
+                    };
+                }
+            }
+        }
+        
+        // Search in file system
+        try {
+            const searchPaths = [
+                shared.mcpConfig?.workingDirectory + '/images',
+                shared.pluginWorkingDir + '/images',
+                process.cwd() + '/images'
+            ].filter(Boolean);
+            
+            for (const searchPath of searchPaths) {
+                const fullPath = `${searchPath}/${filename}`;
+                try {
+                    return await this.loadImageFromPath(fullPath, shared);
+                } catch {
+                    // Continue to next path
+                }
+            }
+        } catch (error) {
+            console.warn(`Failed to find image by filename ${filename}:`, error);
+        }
+        
+        return null;
+    }
+
+    /**
+     * Extract editing instructions from user request
+     */
+    private extractEditInstructions(userRequest: string): string {
+        // Remove image path references and extract the editing instruction
+        const cleanRequest = userRequest
+            .replace(/([^\s]+\.(?:jpg|jpeg|png|webp))/gi, '')  // Remove file references
+            .replace(/\b(edit|modify|change|improve|enhance|the|last|previous|image|at)\b/gi, '')  // Remove command words
+            .trim();
+        
+        return cleanRequest || 'Improve the image quality and enhance details';
+    }
+
+    /**
+     * Enhance editing prompt using LLM
+     */
+    private async enhanceEditingPrompt(editInstructions: string, shared: AgentSharedState): Promise<string> {
+        try {
+            const enhancementPrompt = `You are an expert at writing image editing prompts for AI image editing models like Gemini. 
+
+Transform this basic editing instruction into a detailed, high-quality image editing prompt:
+"${editInstructions}"
+
+Guidelines for enhancement:
+- Be specific about what changes to make to the existing image
+- Include quality improvement keywords: enhanced details, improved clarity, refined composition
+- Specify visual improvements: better lighting, enhanced colors, sharper focus
+- Keep the core editing intent unchanged
+- Make it clear and actionable for image editing
+- Focus on modifications to the existing image, not creating something entirely new
+
+Respond with ONLY the enhanced editing prompt, no explanations or quotes.`;
+
+            const enhancedPrompt = await this.llmProvider.callLLM(enhancementPrompt);
+            
+            console.log(`🎨 LLM Enhanced Editing: "${editInstructions}" → "${enhancedPrompt}"`);
+            return enhancedPrompt;
+            
+        } catch (error) {
+            console.error('❌ LLM editing enhancement failed, using original:', error);
+            return editInstructions;
         }
     }
 

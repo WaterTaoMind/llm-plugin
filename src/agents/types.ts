@@ -106,7 +106,7 @@ export interface ActionDecision {
 
 export interface ReasoningResponse {
     reasoning: string;
-    decision: 'continue' | 'complete' | 'llm_processing' | 'generate_image';
+    decision: 'continue' | 'complete' | 'llm_processing' | 'process_image';  // UNIFIED: generate_image → process_image
     action?: ActionDecision;
     goalStatus: string;
     
@@ -115,8 +115,8 @@ export interface ReasoningResponse {
     llmPrompt?: string;         // Crafted prompt for LLM
     inputHistoryId?: string;    // Reference to specific history entry
     
-    // Image generation fields
-    imagePrompt?: string;       // Prompt for image generation
+    // Image processing fields (generation + editing)
+    imagePrompt?: string;       // Prompt for image generation or editing instructions
     imageConfig?: ImageGenerationConfig;
 }
 

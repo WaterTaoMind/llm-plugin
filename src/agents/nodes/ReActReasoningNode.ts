@@ -129,10 +129,10 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             console.log(`🧠 Prepared LLM processing: ${reasoning.llmTask} using history ID: ${inputHistoryId}`);
         }
         
-        // Handle image generation requests
-        if (reasoning.decision === 'generate_image') {
+        // Handle image processing requests (generation + editing)
+        if (reasoning.decision === 'process_image') {
             if (!reasoning.imagePrompt) {
-                throw new Error('Image generation decision requires imagePrompt');
+                throw new Error('Image processing decision requires imagePrompt');
             }
             
             // Set the image prompt and configuration in shared state
@@ -142,7 +142,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                 shared.imageConfig = reasoning.imageConfig;
             }
             
-            console.log(`🎨 Prepared image generation: "${reasoning.imagePrompt.substring(0, 100)}${reasoning.imagePrompt.length > 100 ? '...' : ''}"`);
+            console.log(`🎨 Prepared image processing: "${reasoning.imagePrompt.substring(0, 100)}${reasoning.imagePrompt.length > 100 ? '...' : ''}"`);
             console.log(`🎨 DEBUG: Full imagePrompt from reasoning: "${reasoning.imagePrompt}"`);
         }
         
@@ -309,7 +309,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `## Available Decisions:\n`;
         prompt += `1. **"continue"**: Use external tools for data gathering, file operations, web requests\n`;
         prompt += `2. **"llm_processing"**: Process content using internal LLM capabilities (translate, summarize, analyze, transform, extract, **fix code**, **rewrite code**, etc.)\n`;
-        prompt += `3. **"generate_image"**: Create visual content using Gemini image generation (diagrams, illustrations, charts, etc.)\n`;
+        prompt += `3. **"process_image"**: Create or edit visual content using Gemini (generate new images, edit existing ones)\n`;
         prompt += `4. **"complete"**: Task is finished, ready for final summary\n\n`;
         
         prompt += `## LLM Processing Instructions:\n`;
@@ -322,9 +322,9 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `  * **DO NOT** modify prefixes: "llm-" stays "llm-", "action-" stays "action-"\n`;
         prompt += `  * Use comma-separated IDs for multiple content like "llm-1-123,action-2-456"\n\n`;
         
-        prompt += `## Image Generation Instructions:\n`;
-        prompt += `When using "generate_image", you must specify:\n`;
-        prompt += `- "imagePrompt": Detailed description of the image to generate (be specific and descriptive)\n`;
+        prompt += `## Image Processing Instructions:\n`;
+        prompt += `When using "process_image", you must specify:\n`;
+        prompt += `- "imagePrompt": Detailed description for image generation OR editing instructions for existing image\n`;
         prompt += `- "imageConfig": Optional configuration object with:\n`;
         prompt += `  * "aspectRatio": "1:1", "3:4", "4:3", "9:16", or "16:9" (default: "1:1")\n`;
         prompt += `  * "numberOfImages": 1-4 (default: 1)\n`;
@@ -333,14 +333,14 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;
         prompt += `- "reasoning": Your step-by-step thinking process\n`;
-        prompt += `- "decision": One of "continue", "llm_processing", "generate_image", or "complete"\n`;
+        prompt += `- "decision": One of "continue", "llm_processing", "process_image", or "complete"\n`;
         prompt += `- "goalStatus": Brief status of progress toward the goal\n`;
         prompt += `- "action": If decision is "continue", specify external tool and parameters\n`;
         prompt += `- "llmTask": If decision is "llm_processing", specify the task type\n`;
         prompt += `- "llmPrompt": If decision is "llm_processing", provide detailed processing instructions\n`;
         prompt += `- "inputHistoryId": If decision is "llm_processing", reference the history ID to process\n`;
-        prompt += `- "imagePrompt": If decision is "generate_image", provide detailed image description\n`;
-        prompt += `- "imageConfig": If decision is "generate_image", optional configuration object\n\n`;
+        prompt += `- "imagePrompt": If decision is "process_image", provide detailed description for image generation or editing\n`;
+        prompt += `- "imageConfig": If decision is "process_image", optional configuration object\n\n`;
         
         prompt += `## Guidelines:\n`;
         prompt += `- Use "continue" for external data gathering (fetch, search, file operations)\n`;
@@ -348,10 +348,10 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `  * **Code fixes**: When user reports syntax errors, bugs, or needs code corrections\n`;
         prompt += `  * **Content transformation**: Translate, summarize, analyze, rewrite, extract\n`;
         prompt += `  * **Processing user input**: When user provides content that needs to be modified\n`;
-        prompt += `- Use "generate_image" for visual content creation:\n`;
-        prompt += `  * **Diagrams & Charts**: Flow charts, organizational charts, technical diagrams\n`;
-        prompt += `  * **Illustrations**: Concept visualizations, educational graphics, infographics\n`;
-        prompt += `  * **Visual Aids**: When text explanation would benefit from visual support\n`;
+        prompt += `- Use "process_image" for visual content creation or editing:\n`;
+        prompt += `  * **Generation**: Create diagrams, charts, illustrations, concept visualizations\n`;
+        prompt += `  * **Editing**: Modify existing images - change colors, add elements, improve quality, style transfer\n`;
+        prompt += `  * **Enhancement**: Improve image quality, lighting, clarity of existing images\n`;
         prompt += `- Use "complete" when the user's request has been fully accomplished AND no content processing is needed\n`;
         prompt += `- **CRITICAL**: Reference history IDs exactly as shown in brackets [like-this] - copy the EXACT ID including prefixes\n`;
         prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
@@ -439,7 +439,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             "type": "object",
             "properties": {
                 "reasoning": {"type": "string"},
-                "decision": {"type": "string", "enum": ["continue", "complete", "llm_processing", "generate_image"]},
+                "decision": {"type": "string", "enum": ["continue", "complete", "llm_processing", "process_image"]},
                 "goalStatus": {"type": "string"},
                 "action": {
                     "type": "object", 
