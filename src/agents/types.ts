@@ -63,6 +63,7 @@ export interface AgentSharedState {
     generatedImages?: GeneratedImage[];
     generatedImagePaths?: string[]; // NEW: Absolute paths to saved image files
     currentImagePrompt?: string;
+    imageProcessingComplete?: boolean; // NEW: Signal from image node when processing is complete
     
     // Configuration & Filesystem
     mcpConfig?: {

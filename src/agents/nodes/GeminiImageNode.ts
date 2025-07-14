@@ -346,14 +346,26 @@ export class GeminiImageNode extends Node<AgentSharedState> {
             safetyFiltered: images.filter(img => img.safetyFiltered).length
         });
 
-        // Determine next action based on results
+        // Determine next action based on results and request type
         if (images.length === 0) {
             console.log('⚠️ No images generated - this may indicate safety filtering');
             return undefined; // End workflow if no images generated
         }
 
-        console.log(`🎉 Successfully generated ${images.length} image(s) via REST API`);
-        return 'default'; // Continue to next step in workflow
+        console.log(`🎉 Successfully processed ${images.length} image(s) via ${request.type}`);
+        
+        // Domain expertise: Image node knows when image processing is complete
+        // For editing tasks, signal explicit completion to avoid infinite loops
+        if (request.type === 'editing') {
+            console.log(`✅ Image editing complete - signaling workflow completion`);
+            shared.imageProcessingComplete = true;
+            shared.goalStatus = `Successfully edited image. Created: ${savedImagePaths.map(p => this.convertToRelativePath(p, shared)).join(', ')}`;
+            return 'complete'; // Direct to summarization for editing tasks
+        }
+        
+        // For generation tasks, continue to reasoning node for potential follow-up
+        console.log(`🔄 Image generation complete - continuing workflow for potential follow-up`);
+        return 'default';
     }
 
     /**
@@ -970,6 +982,7 @@ Respond with ONLY the enhanced editing prompt, no explanations or quotes.`;
             return editInstructions;
         }
     }
+
 
     /**
      * Truncate text for progress display

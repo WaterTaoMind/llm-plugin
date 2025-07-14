@@ -62,10 +62,11 @@ export class ReActFlow {
         this.reasoningNode.on("process_image", this.imageNode);       // Unified image processing (generation + editing)
         this.reasoningNode.on("complete", this.summarizeNode);        // Final summary
 
-        // Step 3: All action types loop back to Reasoning (for iterative ReAct)
+        // Step 3: Action routing
         this.actionNode.on("default", this.reasoningNode);
         this.llmProcessingNode.on("continue", this.reasoningNode);
-        this.imageNode.on("default", this.reasoningNode);
+        this.imageNode.on("default", this.reasoningNode);  // For generation tasks (return 'default')
+        this.imageNode.on("complete", this.summarizeNode); // For editing tasks (return 'complete')
 
         // Step 4: Summarization is the end (no next node)
         // this.summarizeNode returns undefined in post() to end the flow
