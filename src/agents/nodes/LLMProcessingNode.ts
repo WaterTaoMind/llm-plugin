@@ -144,12 +144,27 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
         const entry = history.find(h => h.historyId === historyId);
         
         if (!entry) {
-            // If exact historyId not found, try partial matching for backward compatibility
-            const partialMatch = history.find(h => h.historyId.includes(historyId) || historyId.includes(h.historyId));
+            // Enhanced fallback matching for common prefix mismatches
+            let fallbackMatch = null;
             
-            if (partialMatch) {
-                console.log(`⚠️ Using partial match for history ID: ${historyId} → ${partialMatch.historyId}`);
-                return partialMatch.result;
+            // Try to match by step number and timestamp, ignoring prefix
+            const stepMatch = historyId.match(/^(action|llm)-(\d+)-(\d+)$/);
+            if (stepMatch) {
+                const [, , stepNum, timestamp] = stepMatch;
+                fallbackMatch = history.find(h => {
+                    const historyMatch = h.historyId.match(/^(action|llm)-(\d+)-(\d+)$/);
+                    return historyMatch && historyMatch[2] === stepNum && historyMatch[3] === timestamp;
+                });
+            }
+            
+            // If step/timestamp match failed, try partial matching for backward compatibility
+            if (!fallbackMatch) {
+                fallbackMatch = history.find(h => h.historyId.includes(historyId) || historyId.includes(h.historyId));
+            }
+            
+            if (fallbackMatch) {
+                console.log(`⚠️ Using fallback match for history ID: ${historyId} → ${fallbackMatch.historyId}`);
+                return fallbackMatch.result;
             }
             
             throw new Error(`History entry not found: ${historyId}. Available IDs: ${history.map(h => h.historyId).join(', ')}`);

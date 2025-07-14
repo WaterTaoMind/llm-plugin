@@ -4,7 +4,8 @@ import {
     AgentSharedState, 
     GeneratedImage, 
     ImageGenerationConfig,
-    AgentProgressEvent 
+    AgentProgressEvent,
+    LLMProvider 
 } from '../types';
 
 /**
@@ -24,6 +25,7 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
 
     constructor(
         private apiKey: string,
+        private llmProvider: LLMProvider,
         maxRetries: number = 3,
         waitTime: number = 2
     ) {
@@ -33,12 +35,16 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
 
     /**
      * Preparation phase: Extract image generation parameters from shared state
+     * Uses LLM-based prompt enhancement for high-quality results
      */
     async prep(shared: AgentSharedState): Promise<ImageGenerationRequest> {
         console.log('🎨 GeminiImageGenerationLightNode: Preparing image generation request');
         
         // Extract image prompt from user request or current context
-        const prompt = this.extractImagePrompt(shared);
+        const basePrompt = this.extractImagePrompt(shared);
+        
+        // Enhance prompt using LLM provider for high-quality results
+        const enhancedPrompt = await this.enhancePromptQuality(basePrompt, shared);
         
         // Get configuration with sensible defaults optimized for quality
         const config: ImageGenerationConfig = {
@@ -53,11 +59,11 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
             tool: 'generate_images',
             server: 'gemini-sdk',
             justification: 'Generating visual content using Gemini image generation API',
-            prompt: this.truncateText(prompt, 100),
+            prompt: this.truncateText(enhancedPrompt, 100),
             config: config
         });
 
-        return { prompt, config };
+        return { prompt: enhancedPrompt, config };
     }
 
     /**
@@ -222,13 +228,18 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
      * Extract image generation prompt from user request and context
      */
     private extractImagePrompt(shared: AgentSharedState): string {
+        console.log('🔍 DEBUG: extractImagePrompt called');
+        console.log('🔍 DEBUG: shared.currentImagePrompt:', shared.currentImagePrompt);
+        
         // Check if there's a specific image prompt set
         if (shared.currentImagePrompt) {
-            return this.enhancePromptQuality(shared.currentImagePrompt);
+            console.log('🔍 DEBUG: Using shared.currentImagePrompt');
+            return shared.currentImagePrompt;
         }
 
         // Extract from user request
         const userRequest = shared.userRequest || '';
+        console.log('🔍 DEBUG: Using userRequest:', userRequest);
         
         // Look for explicit image generation requests
         const imageKeywords = [
@@ -245,46 +256,99 @@ export class GeminiImageGenerationLightNode extends Node<AgentSharedState> {
                 .trim() || userRequest;
         }
 
-        // Enhance the prompt for better quality
-        return this.enhancePromptQuality(extractedPrompt);
+        console.log('🔍 DEBUG: Extracted prompt:', extractedPrompt);
+        return extractedPrompt;
     }
 
     /**
-     * Enhance prompt with quality modifiers for better image generation
+     * Enhance prompt using LLM-based creative enhancement for high-quality image generation
      */
-    private enhancePromptQuality(basePrompt: string): string {
-        // Don't enhance if already contains quality keywords
-        const hasQualityKeywords = /(?:photorealistic|high resolution|professional|detailed|sharp|8k|4k|masterpiece)/i.test(basePrompt);
-        if (hasQualityKeywords) {
-            return basePrompt;
-        }
-
-        // Quality enhancement prefixes and suffixes
-        const qualityEnhancers = [
-            "A photorealistic, highly detailed",
-            "Professional photography of",
-            "High-resolution, sharp focus image of"
-        ];
-
-        const qualitySuffixes = [
-            "Professional photography, sharp focus, vibrant colors, high resolution",
-            "Photorealistic, detailed, award-winning photography style",
-            "High quality, dramatic lighting, vivid colors, sharp details"
-        ];
-
-        // Choose enhancer based on content type
-        let enhancedPrompt = basePrompt;
+    private async enhancePromptQuality(basePrompt: string, shared: AgentSharedState): Promise<string> {
+        console.log('🎨 DEBUG: enhancePromptQuality called with:', basePrompt);
+        console.log('🎨 DEBUG: Using LLM-based prompt enhancement for high-quality results');
         
-        if (/(?:sunset|sunrise|landscape|mountain|nature|scenery)/i.test(basePrompt)) {
-            enhancedPrompt = `${qualityEnhancers[1]} ${basePrompt.toLowerCase()}. ${qualitySuffixes[0]}, landscape photography, golden hour lighting.`;
-        } else if (/(?:portrait|person|face|people)/i.test(basePrompt)) {
-            enhancedPrompt = `${qualityEnhancers[0]} ${basePrompt.toLowerCase()}. ${qualitySuffixes[1]}, portrait photography.`;
-        } else {
-            enhancedPrompt = `${qualityEnhancers[2]} ${basePrompt.toLowerCase()}. ${qualitySuffixes[2]}.`;
-        }
+        try {
+            const enhancementPrompt = `You are an expert at writing image generation prompts for AI image models like Gemini, Midjourney, and DALL-E. Your task is to enhance the given prompt to produce the highest quality, most visually stunning images possible.
 
-        console.log(`🎨 Enhanced prompt: "${basePrompt}" → "${enhancedPrompt}"`);
-        return enhancedPrompt;
+Transform this basic prompt into a detailed, high-quality image generation prompt:
+"${basePrompt}"
+
+Guidelines for enhancement:
+- Add specific visual quality keywords: photorealistic, high resolution, 8k, sharp focus, cinematic lighting
+- Include artistic style directions: award-winning photography, masterpiece quality, dramatic composition  
+- Add atmospheric and lighting details: vibrant colors, stunning natural beauty, rich detail
+- Specify technical aspects: professional rendering, gallery-worthy quality
+- Keep the core subject and intent unchanged
+- Make it vivid and descriptive but concise
+- Focus on visual excellence and artistic quality
+
+Respond with ONLY the enhanced prompt, no explanations or quotes.`;
+
+            const enhancedPrompt = await this.llmProvider.callLLM(enhancementPrompt);
+            
+            console.log(`🎨 LLM Enhanced: "${basePrompt}" → "${enhancedPrompt}"`);
+            return enhancedPrompt;
+            
+        } catch (error) {
+            console.error('❌ LLM enhancement failed, using fallback:', error);
+            // Fallback to rule-based enhancement if LLM fails
+            return this.creativeQualityEnhancement(basePrompt);
+        }
+    }
+
+    /**
+     * Creative rule-based enhancement covering multiple visual styles
+     */
+    private creativeQualityEnhancement(basePrompt: string): string {
+        // Detect content type and apply appropriate creative enhancement
+        const prompt = basePrompt.toLowerCase();
+        
+        // Technical/Diagram content
+        if (/(?:diagram|chart|graph|flowchart|technical|schematic|blueprint)/i.test(prompt)) {
+            const enhanced = `Clean, professional ${basePrompt}, technical illustration style, precise lines, clear labeling, informative design, high contrast, vector art quality`;
+            console.log(`🎨 Technical Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // Fantasy/Concept Art
+        if (/(?:fantasy|magical|dragon|wizard|castle|mystical|ethereal|mythical)/i.test(prompt)) {
+            const enhanced = `Epic, highly detailed ${basePrompt}, fantasy concept art, dramatic lighting, rich atmospheric effects, masterpiece quality, digital painting style, trending on ArtStation`;
+            console.log(`🎨 Fantasy Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // Nature/Landscape (more general than photography)
+        if (/(?:sunset|sunrise|landscape|mountain|forest|ocean|nature|scenery|sky)/i.test(prompt)) {
+            const enhanced = `Stunning, photorealistic ${basePrompt}, dramatic lighting and composition, rich vibrant colors, sharp focus, high resolution, cinematic quality, award-winning photography, masterpiece quality, 8k detail`;
+            console.log(`🎨 Nature Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // Abstract/Artistic
+        if (/(?:abstract|artistic|creative|modern|contemporary|design|pattern)/i.test(prompt)) {
+            const enhanced = `Striking, creative ${basePrompt}, modern artistic style, bold composition, sophisticated color palette, gallery-worthy quality, innovative visual design`;
+            console.log(`🎨 Abstract Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // Character/Portrait
+        if (/(?:person|character|portrait|face|people|human|figure)/i.test(prompt)) {
+            const enhanced = `Compelling ${basePrompt}, expressive character design, detailed features, dramatic lighting, emotional depth, professional illustration quality`;
+            console.log(`🎨 Character Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // Architecture/Urban
+        if (/(?:building|architecture|city|urban|street|interior|room|house)/i.test(prompt)) {
+            const enhanced = `Impressive ${basePrompt}, architectural visualization, sophisticated design, excellent composition, professional rendering quality, detailed environment`;
+            console.log(`🎨 Architecture Enhanced: "${basePrompt}" → "${enhanced}"`);
+            return enhanced;
+        }
+        
+        // General creative enhancement for any other content
+        const enhanced = `High-quality, photorealistic ${basePrompt}, professional composition, rich detail, sharp focus, vibrant colors, cinematic lighting, award-winning quality, masterpiece detail, 8k resolution`;
+        console.log(`🎨 General Enhanced: "${basePrompt}" → "${enhanced}"`);
+        return enhanced;
     }
 
     /**

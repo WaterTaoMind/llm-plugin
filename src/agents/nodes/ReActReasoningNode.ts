@@ -143,6 +143,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             }
             
             console.log(`🎨 Prepared image generation: "${reasoning.imagePrompt.substring(0, 100)}${reasoning.imagePrompt.length > 100 ? '...' : ''}"`);
+            console.log(`🎨 DEBUG: Full imagePrompt from reasoning: "${reasoning.imagePrompt}"`);
         }
         
         // Check if we've reached maximum steps
@@ -317,8 +318,9 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `- "llmPrompt": Specific instructions for the LLM (be detailed and clear)\n`;
         prompt += `- "inputHistoryId": Reference to content to process:\n`;
         prompt += `  * Use "user_request" to process the original user request\n`;
-        prompt += `  * Use exact history ID from brackets above like "action-1-123456789"\n`;
-        prompt += `  * Use comma-separated IDs for multiple content like "action-1-123,action-2-456"\n\n`;
+        prompt += `  * **CRITICAL**: Use EXACT history ID from brackets above (e.g., "llm-4-123456789", "action-1-123456789")\n`;
+        prompt += `  * **DO NOT** modify prefixes: "llm-" stays "llm-", "action-" stays "action-"\n`;
+        prompt += `  * Use comma-separated IDs for multiple content like "llm-1-123,action-2-456"\n\n`;
         
         prompt += `## Image Generation Instructions:\n`;
         prompt += `When using "generate_image", you must specify:\n`;
@@ -351,7 +353,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `  * **Illustrations**: Concept visualizations, educational graphics, infographics\n`;
         prompt += `  * **Visual Aids**: When text explanation would benefit from visual support\n`;
         prompt += `- Use "complete" when the user's request has been fully accomplished AND no content processing is needed\n`;
-        prompt += `- Reference history IDs exactly as shown in brackets [like-this]\n`;
+        prompt += `- **CRITICAL**: Reference history IDs exactly as shown in brackets [like-this] - copy the EXACT ID including prefixes\n`;
         prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
         prompt += `- **STRATEGIC APPROACH**: Choose actions that accomplish the most progress toward your goal\n`;
         prompt += `- **COMBINE OPERATIONS**: Look for ways to handle multiple related tasks in single actions\n`;

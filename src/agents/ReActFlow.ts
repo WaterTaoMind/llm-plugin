@@ -37,7 +37,7 @@ export class ReActFlow {
         this.reasoningNode = new ReActReasoningNode(llmProvider, reasoningRetries, 2);
         this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
         this.llmProcessingNode = new LLMProcessingNode(llmProvider, llmProcessingRetries, 1);
-        this.imageGenerationNode = new GeminiImageGenerationLightNode(geminiApiKey, imageGenerationRetries, 2);
+        this.imageGenerationNode = new GeminiImageGenerationLightNode(geminiApiKey, llmProvider, imageGenerationRetries, 2);
         this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
 
         // Set up PocketFlow node chaining with conditional branching
