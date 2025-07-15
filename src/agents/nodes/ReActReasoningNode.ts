@@ -146,6 +146,23 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             console.log(`🎨 DEBUG: Full imagePrompt from reasoning: "${reasoning.imagePrompt}"`);
         }
         
+        // Handle TTS processing requests
+        if (reasoning.decision === 'generate_speech') {
+            if (!reasoning.ttsText) {
+                throw new Error('TTS processing decision requires ttsText');
+            }
+            
+            // Set the TTS text and configuration in shared state
+            shared.currentTTSText = reasoning.ttsText;
+            
+            if (reasoning.ttsConfig) {
+                shared.ttsConfig = reasoning.ttsConfig;
+            }
+            
+            console.log(`🎙️ Prepared TTS processing: "${reasoning.ttsText.substring(0, 100)}${reasoning.ttsText.length > 100 ? '...' : ''}"`);
+            console.log(`🎙️ DEBUG: Full ttsText from reasoning: "${reasoning.ttsText}"`);
+        }
+        
         // Check if we've reached maximum steps
         if (currentStep >= maxSteps) {
             console.log(`⏰ Reached maximum steps (${maxSteps}) - forcing completion`);
@@ -310,7 +327,8 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `1. **"continue"**: Use external tools for data gathering, file operations, web requests\n`;
         prompt += `2. **"llm_processing"**: Process content using internal LLM capabilities (translate, summarize, analyze, transform, extract, **fix code**, **rewrite code**, etc.)\n`;
         prompt += `3. **"process_image"**: Create or edit visual content using Gemini (generate new images, edit existing ones)\n`;
-        prompt += `4. **"complete"**: Task is finished, ready for final summary\n\n`;
+        prompt += `4. **"generate_speech"**: Convert text to speech using Gemini TTS (read aloud, audio narration, voice generation)\n`;
+        prompt += `5. **"complete"**: Task is finished, ready for final summary\n\n`;
         
         prompt += `## LLM Processing Instructions:\n`;
         prompt += `When using "llm_processing", you must specify:\n`;
@@ -330,17 +348,26 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `  * "numberOfImages": 1-4 (default: 1)\n`;
         prompt += `  * "safetyFilterLevel": "BLOCK_MOST", "BLOCK_SOME", "BLOCK_FEW", or "BLOCK_NONE" (default: "BLOCK_MOST")\n\n`;
         
+        prompt += `## TTS Processing Instructions:\n`;
+        prompt += `When using "generate_speech", you must specify:\n`;
+        prompt += `- "ttsText": Text content to convert to speech (can be from user request or previous results)\n`;
+        prompt += `- "ttsConfig": Optional configuration object with:\n`;
+        prompt += `  * "voiceName": Voice will be selected automatically based on context - do not specify\n`;
+        prompt += `  * Voice selection considers user preferences (e.g., "cheerful", "professional") and content type\n\n`;
+        
         prompt += `## Your Task:\n`;
         prompt += `Analyze the situation and decide on the next action. You must respond with valid JSON containing:\n`;
         prompt += `- "reasoning": Your step-by-step thinking process\n`;
-        prompt += `- "decision": One of "continue", "llm_processing", "process_image", or "complete"\n`;
+        prompt += `- "decision": One of "continue", "llm_processing", "process_image", "generate_speech", or "complete"\n`;
         prompt += `- "goalStatus": Brief status of progress toward the goal\n`;
         prompt += `- "action": If decision is "continue", specify external tool and parameters\n`;
         prompt += `- "llmTask": If decision is "llm_processing", specify the task type\n`;
         prompt += `- "llmPrompt": If decision is "llm_processing", provide detailed processing instructions\n`;
         prompt += `- "inputHistoryId": If decision is "llm_processing", reference the history ID to process\n`;
         prompt += `- "imagePrompt": If decision is "process_image", provide detailed description for image generation or editing\n`;
-        prompt += `- "imageConfig": If decision is "process_image", optional configuration object\n\n`;
+        prompt += `- "imageConfig": If decision is "process_image", optional configuration object\n`;
+        prompt += `- "ttsText": If decision is "generate_speech", provide text content to convert to speech\n`;
+        prompt += `- "ttsConfig": If decision is "generate_speech", optional configuration object\n\n`;
         
         prompt += `## Guidelines:\n`;
         prompt += `- Use "continue" for external data gathering (fetch, search, file operations)\n`;
@@ -352,6 +379,11 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         prompt += `  * **Generation**: Create diagrams, charts, illustrations, concept visualizations\n`;
         prompt += `  * **Editing**: Modify existing images - change colors, add elements, improve quality, style transfer\n`;
         prompt += `  * **Enhancement**: Improve image quality, lighting, clarity of existing images\n`;
+        prompt += `- Use "generate_speech" for text-to-speech conversion:\n`;
+        prompt += `  * **Explicit requests**: When user asks to "read aloud", "create audio", "generate voice", etc.\n`;
+        prompt += `  * **Audio narration**: Convert written content to spoken narration\n`;
+        prompt += `  * **Voice generation**: Create audio versions of text content\n`;
+        prompt += `  * **NOT for**: General text processing, analysis, or non-audio tasks\n`;
         prompt += `- Use "complete" when the user's request has been fully accomplished AND no content processing is needed\n`;
         prompt += `- **CRITICAL**: Reference history IDs exactly as shown in brackets [like-this] - copy the EXACT ID including prefixes\n`;
         prompt += `- **EFFICIENCY PRIORITY**: With ${remainingSteps} steps remaining, maximize work per step\n`;
@@ -439,7 +471,7 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             "type": "object",
             "properties": {
                 "reasoning": {"type": "string"},
-                "decision": {"type": "string", "enum": ["continue", "complete", "llm_processing", "process_image"]},
+                "decision": {"type": "string", "enum": ["continue", "complete", "llm_processing", "process_image", "generate_speech"]},
                 "goalStatus": {"type": "string"},
                 "action": {
                     "type": "object", 
@@ -461,6 +493,13 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                         "aspectRatio": {"type": "string", "enum": ["1:1", "3:4", "4:3", "9:16", "16:9"]},
                         "numberOfImages": {"type": "number", "minimum": 1, "maximum": 4},
                         "safetyFilterLevel": {"type": "string", "enum": ["BLOCK_MOST", "BLOCK_SOME", "BLOCK_FEW", "BLOCK_NONE"]}
+                    }
+                },
+                "ttsText": {"type": "string"},
+                "ttsConfig": {
+                    "type": "object",
+                    "properties": {
+                        "voiceName": {"type": "string"}
                     }
                 }
             },

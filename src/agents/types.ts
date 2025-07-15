@@ -26,6 +26,24 @@ export interface GeneratedImage {
     localFilePath?: string; // NEW: Local file system path for saved image
 }
 
+// Generated audio assets
+export interface GeneratedAudio {
+    id: string;
+    text: string; // Original text input
+    processedText: string; // Cleaned text used for TTS
+    audioBytes: string; // Base64 encoded audio data (PCM)
+    format: string; // 'audio/wav'
+    voiceName: string; // Selected voice name
+    generatedAt: number;
+    localFilePath?: string; // Local file system path for saved audio
+    duration?: number; // Duration in seconds (if available)
+}
+
+export interface TTSConfig {
+    voiceName?: string; // Voice to use for TTS
+    responseModalities?: string[]; // ['AUDIO']
+}
+
 export interface ImageGenerationConfig {
     aspectRatio?: string; // '1:1', '3:4', '4:3', '9:16', '16:9'
     numberOfImages?: number;
@@ -65,6 +83,12 @@ export interface AgentSharedState {
     generatedImagePaths?: string[]; // NEW: Absolute paths to saved image files
     currentImagePrompt?: string;
     imageProcessingComplete?: boolean; // NEW: Signal from image node when processing is complete
+    
+    // Generated Audio Assets
+    generatedAudios?: GeneratedAudio[];
+    generatedAudioPaths?: string[]; // NEW: Absolute paths to saved audio files
+    currentTTSText?: string;
+    ttsConfig?: TTSConfig;
     
     // Configuration & Filesystem
     mcpConfig?: {
@@ -108,7 +132,7 @@ export interface ActionDecision {
 
 export interface ReasoningResponse {
     reasoning: string;
-    decision: 'continue' | 'complete' | 'llm_processing' | 'process_image';  // UNIFIED: generate_image → process_image
+    decision: 'continue' | 'complete' | 'llm_processing' | 'process_image' | 'generate_speech';  // NEW: Added generate_speech
     action?: ActionDecision;
     goalStatus: string;
     
@@ -120,6 +144,10 @@ export interface ReasoningResponse {
     // Image processing fields (generation + editing)
     imagePrompt?: string;       // Prompt for image generation or editing instructions
     imageConfig?: ImageGenerationConfig;
+    
+    // TTS processing fields
+    ttsText?: string;           // Text to convert to speech
+    ttsConfig?: TTSConfig;      // TTS configuration
 }
 
 export interface LLMProcessingRequest {

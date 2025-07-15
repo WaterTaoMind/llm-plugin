@@ -6,6 +6,7 @@ import { ReActActionNode } from './nodes/ReActActionNode';
 import { LLMProcessingNode } from './nodes/LLMProcessingNode';
 import { SummarizeResultsNode } from './nodes/SummarizeResultsNode';
 import { GeminiImageNode } from './nodes/GeminiImageNode';
+import { GeminiTTSNode } from './nodes/GeminiTTSNode';
 
 /**
  * PocketFlow-based ReAct Agent using proper Flow class and node chaining
@@ -18,6 +19,7 @@ export class ReActFlow {
     private actionNode: ReActActionNode;
     private llmProcessingNode: LLMProcessingNode;
     private imageNode: GeminiImageNode;
+    private ttsNode: GeminiTTSNode;
     private summarizeNode: SummarizeResultsNode;
 
     constructor(
@@ -31,6 +33,7 @@ export class ReActFlow {
         actionRetries: number = 3,
         llmProcessingRetries: number = 3,
         imageGenerationRetries: number = 3,
+        ttsRetries: number = 2,
         summarizeRetries: number = 2
     ) {
         // Initialize PocketFlow nodes
@@ -39,6 +42,7 @@ export class ReActFlow {
         this.actionNode = new ReActActionNode(mcpClient, actionRetries, 1);
         this.llmProcessingNode = new LLMProcessingNode(llmProvider, llmProcessingRetries, 1);
         this.imageNode = new GeminiImageNode(geminiApiKey, llmProvider, imageGenerationRetries, 2);
+        this.ttsNode = new GeminiTTSNode(geminiApiKey, llmProvider, ttsRetries, 5);
         this.summarizeNode = new SummarizeResultsNode(llmProvider, summarizeRetries, 1);
 
         // Set up PocketFlow node chaining with conditional branching
@@ -56,10 +60,11 @@ export class ReActFlow {
         // Step 1: Tool Discovery -> Reasoning
         this.discoverToolsNode.next(this.reasoningNode);
 
-        // Step 2: Reasoning -> 4-way routing (UNIFIED IMAGE PROCESSING)
+        // Step 2: Reasoning -> 5-way routing (UNIFIED MULTIMODAL PROCESSING)
         this.reasoningNode.on("continue", this.actionNode);           // External MCP actions
         this.reasoningNode.on("llm_processing", this.llmProcessingNode); // Internal LLM processing
         this.reasoningNode.on("process_image", this.imageNode);       // Unified image processing (generation + editing)
+        this.reasoningNode.on("generate_speech", this.ttsNode);       // Text-to-speech generation
         this.reasoningNode.on("complete", this.summarizeNode);        // Final summary
 
         // Step 3: Action routing
@@ -67,6 +72,7 @@ export class ReActFlow {
         this.llmProcessingNode.on("continue", this.reasoningNode);
         this.imageNode.on("default", this.reasoningNode);  // For generation tasks (return 'default')
         this.imageNode.on("complete", this.summarizeNode); // For editing tasks (return 'complete')
+        this.ttsNode.on("default", this.reasoningNode);    // TTS continues to reasoning for follow-up
 
         // Step 4: Summarization is the end (no next node)
         // this.summarizeNode returns undefined in post() to end the flow

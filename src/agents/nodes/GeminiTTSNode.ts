@@ -77,30 +77,63 @@ export class GeminiTTSNode extends Node<AgentSharedState> {
      * Execution phase: Generate audio using Gemini TTS API
      */
     async exec(request: TTSRequest): Promise<GeneratedAudio[]> {
-        console.log('🔊 GeminiTTSNode: Executing TTS generation');
+        console.log('🔊 GeminiTTSNode: Executing TTS generation via Gemini API');
         
         try {
-            // Use the official Google GenAI SDK for TTS
-            const response = await this.geminiClient.models.generateContent({
-                model: 'gemini-2.5-flash-preview-tts',
-                contents: [{ parts: [{ text: request.processedText }] }],
-                config: {
-                    responseModalities: ['AUDIO'],
+            console.log(`🎙️ Generating speech with voice: ${request.config.voiceName || 'kore'}`);
+            console.log(`📝 Text to convert (${request.processedText.length} chars): ${request.processedText.substring(0, 100)}...`);
+            
+            // Construct the API request
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${this.apiKey}`;
+            
+            const requestBody = {
+                contents: [{
+                    parts: [{
+                        text: request.processedText
+                    }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
                     speechConfig: {
                         voiceConfig: {
-                            prebuiltVoiceConfig: { 
-                                voiceName: request.config.voiceName || 'kore' 
+                            prebuiltVoiceConfig: {
+                                voiceName: request.config.voiceName || 'kore'
                             }
                         }
-                    },
-                    // Extended timeout for TTS processing
-                    httpOptions: {
-                        timeout: 10 * 60 * 1000 // 10 minutes
                     }
                 }
+            };
+            
+            console.log(`🌐 Making TTS API request to: ${apiUrl}`);
+            
+            // Make the API request
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
             });
             
-            return this.processResponse(response, request);
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`❌ TTS API request failed: ${response.status} ${response.statusText}`);
+                console.error(`❌ Error response: ${errorText}`);
+                throw new Error(`Gemini TTS API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            
+            const responseData = await response.json();
+            console.log(`✅ TTS API response received`);
+            
+            // Process the response and extract audio data
+            const audios = this.processResponse(responseData, request);
+            
+            if (audios.length === 0) {
+                throw new Error('No audio data found in Gemini TTS API response');
+            }
+            
+            console.log(`✅ Generated ${audios.length} audio(s) via Gemini TTS`);
+            return audios;
             
         } catch (error) {
             console.error(`❌ TTS generation failed:`, error);
@@ -216,25 +249,38 @@ export class GeminiTTSNode extends Node<AgentSharedState> {
     private processResponse(response: any, request: TTSRequest): GeneratedAudio[] {
         const processedAudios: GeneratedAudio[] = [];
         
+        console.log('🔍 Processing TTS API response structure');
+        
         if (response.candidates) {
             for (const [candidateIndex, candidate] of response.candidates.entries()) {
                 if (candidate.content?.parts) {
                     for (const [partIndex, part] of candidate.content.parts.entries()) {
-                        if (part.inlineData?.mimeType?.startsWith('audio/') && part.inlineData.data) {
+                        if (part.inlineData?.mimeType?.includes('audio') && part.inlineData.data) {
+                            console.log(`🎵 Found audio data: ${part.inlineData.mimeType}, ${part.inlineData.data.length} chars base64`);
+                            
+                            // Convert PCM to WAV format since Gemini returns audio/L16;codec=pcm;rate=24000
+                            const wavAudioBytes = this.convertPCMToWAV(part.inlineData.data);
+                            
                             const processedAudio: GeneratedAudio = {
                                 id: `gemini-tts-${Date.now()}-${candidateIndex}-${partIndex}`,
                                 text: request.text,
                                 processedText: request.processedText,
-                                audioBytes: part.inlineData.data,
-                                format: 'audio/wav', // PCM converted to WAV
+                                audioBytes: wavAudioBytes,
+                                format: 'audio/wav', // Converted from PCM to WAV
                                 voiceName: request.config.voiceName || 'kore',
                                 generatedAt: Date.now()
                             };
                             processedAudios.push(processedAudio);
+                            console.log(`✅ Processed audio ${processedAudio.id} (${wavAudioBytes.length} chars WAV)`);
                         }
                     }
                 }
             }
+        }
+
+        if (processedAudios.length === 0) {
+            console.warn('⚠️ No audio data found in response');
+            console.log('📋 Response structure:', JSON.stringify(response, null, 2));
         }
 
         console.log(`✅ Processed ${processedAudios.length} audio(s) via TTS`);
