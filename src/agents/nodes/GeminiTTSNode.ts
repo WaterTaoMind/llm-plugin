@@ -74,70 +74,93 @@ export class GeminiTTSNode extends Node<AgentSharedState> {
     }
 
     /**
-     * Execution phase: Generate audio using Gemini TTS API
+     * Execution phase: Generate audio using Gemini TTS Streaming API (for long text support)
      */
     async exec(request: TTSRequest): Promise<GeneratedAudio[]> {
-        console.log('🔊 GeminiTTSNode: Executing TTS generation via Gemini API');
+        console.log('🔊 GeminiTTSNode: Executing TTS generation via Gemini Streaming API');
         
         try {
             console.log(`🎙️ Generating speech with voice: ${request.config.voiceName || 'kore'}`);
             console.log(`📝 Text to convert (${request.processedText.length} chars): ${request.processedText.substring(0, 100)}...`);
             
-            // Construct the API request
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${this.apiKey}`;
-            
-            const requestBody = {
-                contents: [{
-                    parts: [{
-                        text: request.processedText
-                    }]
-                }],
-                generationConfig: {
-                    responseModalities: ["AUDIO"],
-                    speechConfig: {
-                        voiceConfig: {
-                            prebuiltVoiceConfig: {
-                                voiceName: request.config.voiceName || 'kore'
-                            }
+            // Use GoogleGenAI client with streaming for long text support
+            const model = 'gemini-2.5-flash-preview-tts';
+            const config = {
+                temperature: 1,
+                responseModalities: ['audio'], // lowercase as per Google AI Studio
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: {
+                            voiceName: request.config.voiceName || 'kore'
                         }
                     }
                 }
             };
             
-            console.log(`🌐 Making TTS API request to: ${apiUrl}`);
+            const contents = [{
+                role: 'user',
+                parts: [{
+                    text: request.processedText
+                }]
+            }];
             
-            // Make the API request
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
+            console.log(`🌊 Starting streaming TTS generation...`);
+            
+            // Use streaming API for better handling of long text
+            const response = await this.geminiClient.models.generateContentStream({
+                model,
+                config,
+                contents
             });
             
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`❌ TTS API request failed: ${response.status} ${response.statusText}`);
-                console.error(`❌ Error response: ${errorText}`);
-                throw new Error(`Gemini TTS API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+            // Collect audio chunks from streaming response
+            const audioChunks: Buffer[] = [];
+            let chunkIndex = 0;
+            
+            for await (const chunk of response) {
+                if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+                    continue;
+                }
+                
+                if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
+                    const inlineData = chunk.candidates[0].content.parts[0].inlineData;
+                    if (inlineData.mimeType?.includes('audio') && inlineData.data) {
+                        console.log(`🎵 Received audio chunk ${chunkIndex++}: ${inlineData.mimeType}, ${inlineData.data.length} chars base64`);
+                        
+                        // Convert chunk to WAV format using proper MIME type parsing
+                        const wavBuffer = this.convertToWav(inlineData.data, inlineData.mimeType);
+                        audioChunks.push(wavBuffer);
+                    }
+                } else if (chunk.text) {
+                    console.log(`📝 Text chunk: ${chunk.text}`);
+                }
             }
             
-            const responseData = await response.json();
-            console.log(`✅ TTS API response received`);
-            
-            // Process the response and extract audio data
-            const audios = this.processResponse(responseData, request);
-            
-            if (audios.length === 0) {
-                throw new Error('No audio data found in Gemini TTS API response');
+            if (audioChunks.length === 0) {
+                throw new Error('No audio chunks received from streaming TTS API');
             }
             
-            console.log(`✅ Generated ${audios.length} audio(s) via Gemini TTS`);
-            return audios;
+            // Combine all audio chunks into a single WAV file
+            const combinedAudio = Buffer.concat(audioChunks);
+            const base64Audio = combinedAudio.toString('base64');
+            
+            // Create GeneratedAudio object
+            const generatedAudio: GeneratedAudio = {
+                id: `gemini-tts-stream-${Date.now()}`,
+                text: request.text,
+                processedText: request.processedText,
+                audioBytes: base64Audio,
+                format: 'audio/wav',
+                voiceName: request.config.voiceName || 'kore',
+                generatedAt: Date.now()
+            };
+            
+            console.log(`✅ Generated streaming audio: ${audioChunks.length} chunks, ${base64Audio.length} chars base64, ${combinedAudio.length} bytes total`);
+            return [generatedAudio];
             
         } catch (error) {
-            console.error(`❌ TTS generation failed:`, error);
-            throw new Error(`Gemini TTS generation failed: ${error.message}`);
+            console.error(`❌ Streaming TTS generation failed:`, error);
+            throw new Error(`Gemini Streaming TTS generation failed: ${error.message}`);
         }
     }
 
@@ -243,49 +266,6 @@ export class GeminiTTSNode extends Node<AgentSharedState> {
         return 'default';
     }
 
-    /**
-     * Process API response and extract audio data
-     */
-    private processResponse(response: any, request: TTSRequest): GeneratedAudio[] {
-        const processedAudios: GeneratedAudio[] = [];
-        
-        console.log('🔍 Processing TTS API response structure');
-        
-        if (response.candidates) {
-            for (const [candidateIndex, candidate] of response.candidates.entries()) {
-                if (candidate.content?.parts) {
-                    for (const [partIndex, part] of candidate.content.parts.entries()) {
-                        if (part.inlineData?.mimeType?.includes('audio') && part.inlineData.data) {
-                            console.log(`🎵 Found audio data: ${part.inlineData.mimeType}, ${part.inlineData.data.length} chars base64`);
-                            
-                            // Convert PCM to WAV format since Gemini returns audio/L16;codec=pcm;rate=24000
-                            const wavAudioBytes = this.convertPCMToWAV(part.inlineData.data);
-                            
-                            const processedAudio: GeneratedAudio = {
-                                id: `gemini-tts-${Date.now()}-${candidateIndex}-${partIndex}`,
-                                text: request.text,
-                                processedText: request.processedText,
-                                audioBytes: wavAudioBytes,
-                                format: 'audio/wav', // Converted from PCM to WAV
-                                voiceName: request.config.voiceName || 'kore',
-                                generatedAt: Date.now()
-                            };
-                            processedAudios.push(processedAudio);
-                            console.log(`✅ Processed audio ${processedAudio.id} (${wavAudioBytes.length} chars WAV)`);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (processedAudios.length === 0) {
-            console.warn('⚠️ No audio data found in response');
-            console.log('📋 Response structure:', JSON.stringify(response, null, 2));
-        }
-
-        console.log(`✅ Processed ${processedAudios.length} audio(s) via TTS`);
-        return processedAudios;
-    }
 
     /**
      * Extract text for TTS from shared state
@@ -420,49 +400,86 @@ Respond with ONLY the voice name from the list above, no explanations or quotes.
     }
 
     /**
-     * Convert PCM audio data to WAV format
+     * Convert audio data to WAV format with proper MIME type parsing
+     * Based on Google AI Studio reference implementation
+     */
+    private convertToWav(rawData: string, mimeType: string): Buffer {
+        const options = this.parseMimeType(mimeType);
+        const rawBuffer = Buffer.from(rawData, 'base64');
+        const wavHeader = this.createWavHeader(rawBuffer.length, options);
+        
+        return Buffer.concat([wavHeader, rawBuffer]);
+    }
+    
+    /**
+     * Parse MIME type to extract audio format parameters
+     */
+    private parseMimeType(mimeType: string): { numChannels: number; sampleRate: number; bitsPerSample: number } {
+        const [fileType, ...params] = mimeType.split(';').map(s => s.trim());
+        const [_, format] = fileType.split('/');
+        
+        const options: { numChannels: number; sampleRate?: number; bitsPerSample?: number } = {
+            numChannels: 1, // Default to mono
+        };
+        
+        // Parse format like 'L16' to extract bits per sample
+        if (format && format.startsWith('L')) {
+            const bits = parseInt(format.slice(1), 10);
+            if (!isNaN(bits)) {
+                options.bitsPerSample = bits;
+            }
+        }
+        
+        // Parse parameters like 'rate=24000'
+        for (const param of params) {
+            const [key, value] = param.split('=').map(s => s.trim());
+            if (key === 'rate') {
+                options.sampleRate = parseInt(value, 10);
+            }
+        }
+        
+        // Set defaults if not found in MIME type
+        return {
+            numChannels: options.numChannels,
+            sampleRate: options.sampleRate || 24000, // Default to 24kHz
+            bitsPerSample: options.bitsPerSample || 16 // Default to 16-bit
+        };
+    }
+    
+    /**
+     * Create WAV header based on audio parameters
+     * Following WAV format specification: http://soundfile.sapp.org/doc/WaveFormat
+     */
+    private createWavHeader(dataLength: number, options: { numChannels: number; sampleRate: number; bitsPerSample: number }): Buffer {
+        const { numChannels, sampleRate, bitsPerSample } = options;
+        
+        const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+        const blockAlign = numChannels * bitsPerSample / 8;
+        const buffer = Buffer.alloc(44);
+        
+        buffer.write('RIFF', 0);                      // ChunkID
+        buffer.writeUInt32LE(36 + dataLength, 4);     // ChunkSize
+        buffer.write('WAVE', 8);                      // Format
+        buffer.write('fmt ', 12);                     // Subchunk1ID
+        buffer.writeUInt32LE(16, 16);                 // Subchunk1Size (PCM)
+        buffer.writeUInt16LE(1, 20);                  // AudioFormat (1 = PCM)
+        buffer.writeUInt16LE(numChannels, 22);        // NumChannels
+        buffer.writeUInt32LE(sampleRate, 24);         // SampleRate
+        buffer.writeUInt32LE(byteRate, 28);           // ByteRate
+        buffer.writeUInt16LE(blockAlign, 32);         // BlockAlign
+        buffer.writeUInt16LE(bitsPerSample, 34);      // BitsPerSample
+        buffer.write('data', 36);                     // Subchunk2ID
+        buffer.writeUInt32LE(dataLength, 40);         // Subchunk2Size
+        
+        return buffer;
+    }
+    
+    /**
+     * Legacy method for backwards compatibility
      */
     private convertPCMToWAV(pcmBase64: string): string {
-        // Convert base64 PCM to Buffer
-        const pcmBuffer = Buffer.from(pcmBase64, 'base64');
-        
-        // WAV header parameters for Gemini TTS output
-        const sampleRate = 24000; // 24kHz
-        const channels = 1; // Mono
-        const bitsPerSample = 16;
-        
-        // Calculate sizes
-        const byteRate = sampleRate * channels * bitsPerSample / 8;
-        const blockAlign = channels * bitsPerSample / 8;
-        const dataSize = pcmBuffer.length;
-        const fileSize = 36 + dataSize;
-        
-        // Create WAV header
-        const header = Buffer.alloc(44);
-        
-        // RIFF header
-        header.write('RIFF', 0);
-        header.writeUInt32LE(fileSize, 4);
-        header.write('WAVE', 8);
-        
-        // fmt chunk
-        header.write('fmt ', 12);
-        header.writeUInt32LE(16, 16); // fmt chunk size
-        header.writeUInt16LE(1, 20); // PCM format
-        header.writeUInt16LE(channels, 22);
-        header.writeUInt32LE(sampleRate, 24);
-        header.writeUInt32LE(byteRate, 28);
-        header.writeUInt16LE(blockAlign, 32);
-        header.writeUInt16LE(bitsPerSample, 34);
-        
-        // data chunk
-        header.write('data', 36);
-        header.writeUInt32LE(dataSize, 40);
-        
-        // Combine header and data
-        const wavBuffer = Buffer.concat([header, pcmBuffer]);
-        
-        // Convert to base64 for consistent handling
+        // Use the new conversion method with default MIME type
+        const wavBuffer = this.convertToWav(pcmBase64, 'audio/L16;rate=24000');
         return wavBuffer.toString('base64');
     }
 
