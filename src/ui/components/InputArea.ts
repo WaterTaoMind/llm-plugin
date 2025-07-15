@@ -7,6 +7,16 @@ import { MCPClientService } from '../../services/MCPClientService';
 interface ConfigData {
     models: Array<{id: string, label: string}>;
     templates: Array<{id: string, label: string}>;
+    agentModels?: Array<{id: string, label: string}>;
+    agentModelConfig?: {
+        configType: 'single' | 'dual';
+        singleModel: string;
+        dualModel: {
+            reasoningModel: string;
+            processingModel: string;
+        };
+    };
+    defaultModel?: string;
 }
 
 export class InputArea {
@@ -108,20 +118,52 @@ export class InputArea {
             // Try to read the file directly using Node.js fs
             try {
                 const fs = require('fs');
-                const configContent = fs.readFileSync(configPath, 'utf8');
+                let configContent = fs.readFileSync(configPath, 'utf8');
                 console.log(`🔍 Raw config content length: ${configContent.length}`);
 
-                const fileConfig = JSON.parse(configContent);
+                let fileConfig = JSON.parse(configContent);
                 console.log(`🔍 Parsed config:`, fileConfig);
+
+                // Auto-migrate: Add agent models if missing (Gemini-only)
+                if (!fileConfig.agentModels) {
+                    fileConfig.agentModels = [
+                        { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
+                        { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
+                        { id: 'g25f', label: 'Gemini-2.5-Flash' },
+                        { id: 'g25p', label: 'Gemini-2.5-Pro' }
+                    ];
+                    console.log('📋 Added default agent models');
+                }
+
+                // Auto-migrate: Add agent config if missing
+                if (!fileConfig.agentModelConfig) {
+                    fileConfig.agentModelConfig = {
+                        configType: 'single',
+                        singleModel: fileConfig.defaultModel || 'g25fp',
+                        dualModel: {
+                            reasoningModel: 'g25fp',
+                            processingModel: 'g25p'
+                        }
+                    };
+                    console.log('📋 Added default agent model config');
+                }
+
+                // Save updated config back to file
+                fs.writeFileSync(configPath, JSON.stringify(fileConfig, null, 2));
 
                 // Extract models and templates from file config
                 if (fileConfig.models && fileConfig.templates) {
                     this.configData = {
                         models: fileConfig.models,
-                        templates: fileConfig.templates
+                        templates: fileConfig.templates,
+                        agentModels: fileConfig.agentModels,
+                        agentModelConfig: fileConfig.agentModelConfig,
+                        defaultModel: fileConfig.defaultModel
                     };
                     console.log('✅ Successfully loaded config from data.json:');
                     console.log('📋 Models:', this.configData.models);
+                    console.log('📋 Agent Models:', this.configData.agentModels);
+                    console.log('📋 Agent Config:', this.configData.agentModelConfig);
                     console.log('📋 Templates:', this.configData.templates);
                     return; // Success - exit early
                 } else {
@@ -143,6 +185,21 @@ export class InputArea {
                     { id: 'sv3', label: 'DeepSeek-V3-0324' },
                     { id: 'sr1', label: 'DeepSeek-R1-0528' }
                 ],
+                agentModels: [
+                    { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
+                    { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
+                    { id: 'g25f', label: 'Gemini-2.5-Flash' },
+                    { id: 'g25p', label: 'Gemini-2.5-Pro' }
+                ],
+                agentModelConfig: {
+                    configType: 'single',
+                    singleModel: 'g25fp',
+                    dualModel: {
+                        reasoningModel: 'g25fp',
+                        processingModel: 'g25p'
+                    }
+                },
+                defaultModel: 'g25fp',
                 templates: [
                     { id: 'summary', label: '文档总结' },
                     { id: 'en2zh', label: '英译中' },
@@ -269,7 +326,25 @@ export class InputArea {
         // Clear existing options
         this.modelSelector.innerHTML = '';
 
-        // Add models from config
+        // Get current mode from mode selector
+        const currentMode = this.getCurrentModeString();
+        
+        if (currentMode === 'chat') {
+            this.populateChatModeModels();
+        } else {
+            this.populateAgentModeModels();
+        }
+    }
+
+    private getCurrentModeString(): string {
+        // Use the existing currentMode property and convert to string
+        return this.currentMode === ProcessingMode.CHAT ? 'chat' : 'agent';
+    }
+
+    private populateChatModeModels() {
+        if (!this.configData?.models) return;
+
+        // Use full model list for chat mode
         this.configData.models.forEach(model => {
             const option = this.modelSelector.createEl('option');
             option.value = model.id;
@@ -281,8 +356,55 @@ export class InputArea {
         customOption.value = 'custom';
         customOption.textContent = 'Custom';
 
-        // Set default
-        this.modelSelector.value = this.configData.models[0]?.id || 'custom';
+        // Set to default model
+        this.modelSelector.value = this.configData.defaultModel || this.configData.models[0]?.id || 'custom';
+    }
+
+    private populateAgentModeModels() {
+        if (!this.configData?.agentModels) return;
+
+        const agentConfig = this.configData.agentModelConfig;
+        
+        if (agentConfig?.configType === 'dual') {
+            // Create dual model display
+            this.createDualModelDisplay();
+        } else {
+            // Single model - show agent model list
+            this.configData.agentModels.forEach(model => {
+                const option = this.modelSelector.createEl('option');
+                option.value = model.id;
+                option.textContent = model.label;
+            });
+            
+            // Set to configured single model
+            this.modelSelector.value = agentConfig?.singleModel || this.configData.agentModels[0]?.id || 'g25fp';
+        }
+    }
+
+    private createDualModelDisplay() {
+        const agentConfig = this.configData?.agentModelConfig;
+        const reasoningModel = agentConfig?.dualModel?.reasoningModel || 'g25fp';
+        const processingModel = agentConfig?.dualModel?.processingModel || 'g25p';
+        
+        // Create reasoning model option
+        const reasoningOption = this.modelSelector.createEl('option');
+        reasoningOption.value = reasoningModel;
+        reasoningOption.textContent = `🧠 ${this.getModelLabel(reasoningModel)}`;
+        
+        // Create processing model option (if different)
+        if (processingModel !== reasoningModel) {
+            const processingOption = this.modelSelector.createEl('option');
+            processingOption.value = processingModel;
+            processingOption.textContent = `⚙️ ${this.getModelLabel(processingModel)}`;
+        }
+        
+        // Set to reasoning model by default
+        this.modelSelector.value = reasoningModel;
+    }
+
+    private getModelLabel(modelId: string): string {
+        const model = this.configData?.agentModels?.find(m => m.id === modelId);
+        return model?.label || modelId;
     }
 
     private createModeSelector(container: HTMLElement) {
@@ -407,6 +529,10 @@ export class InputArea {
         
         this.currentMode = mode;
         this.updateModeSelector();
+        
+        // Refresh model selector when mode changes
+        this.populateModelSelector();
+        
         this.onModeChange(mode);
     }
 

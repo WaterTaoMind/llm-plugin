@@ -53,12 +53,8 @@ export class AgenticLLMService {
             // Create MCP client adapter
             const mcpClient = new MCPClientAdapter(this.mcpClientService);
             
-            // Create model configuration
-            const modelConfig: ModelConfig = {
-                reasoning: this.settings.defaultModel || 'gpt-4o-mini',
-                summarization: this.settings.defaultModel || 'gpt-4o-mini',
-                default: this.settings.defaultModel || 'gpt-4o-mini'
-            };
+            // Create model configuration using agent model config
+            const modelConfig: ModelConfig = this.createModelConfig();
             
             // Initialize the TypeScript ReAct Flow system with Gemini API key
             const geminiApiKey = this.settings.geminiApiKey || '';
@@ -203,6 +199,28 @@ export class AgenticLLMService {
             return { result };
         } catch (error) {
             throw new Error(`LLM API failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Create model configuration based on agent model config settings
+     */
+    private createModelConfig(): ModelConfig {
+        const agentConfig = this.settings.agentModelConfig;
+        
+        if (agentConfig?.configType === 'single') {
+            const model = agentConfig.singleModel || this.settings.defaultModel || 'g25fp';
+            return {
+                reasoning: model,
+                summarization: model,
+                default: model
+            };
+        } else {
+            return {
+                reasoning: agentConfig?.dualModel?.reasoningModel || this.settings.defaultModel || 'g25fp',
+                summarization: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp',
+                default: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp'
+            };
         }
     }
 

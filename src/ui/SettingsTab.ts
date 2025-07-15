@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
-import { MCPServerConfig, ProcessingMode } from '../core/types';
+import { MCPServerConfig, ProcessingMode, AgentModelConfig } from '../core/types';
 
 export class LLMSettingTab extends PluginSettingTab {
     plugin: LLMPlugin;
@@ -93,6 +93,58 @@ export class LLMSettingTab extends PluginSettingTab {
                     this.plugin.settings.defaultModel = value;
                     await this.plugin.saveSettings();
                 }));
+
+        // Agent Model Configuration Section
+        containerEl.createEl('h3', {text: 'Agent Model Configuration'});
+        
+        new Setting(containerEl)
+            .setName('Agent Mode Configuration')
+            .setDesc('Single model uses one model for all tasks. Dual model uses separate models for reasoning and processing.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('single', 'Single Model');
+                dropdown.addOption('dual', 'Dual Model');
+                dropdown.setValue(this.getAgentConfig().configType);
+                dropdown.onChange(async (value) => {
+                    await this.updateAgentConfig('configType', value as 'single' | 'dual');
+                    this.display(); // Refresh the settings display
+                });
+            });
+
+        // Conditional settings based on config type
+        if (this.getAgentConfig().configType === 'single') {
+            new Setting(containerEl)
+                .setName('Agent Model')
+                .setDesc('Model used for all agent operations')
+                .addDropdown(dropdown => {
+                    this.populateAgentModelDropdown(dropdown);
+                    dropdown.setValue(this.getAgentConfig().singleModel);
+                    dropdown.onChange(async (value) => {
+                        await this.updateAgentConfig('singleModel', value);
+                    });
+                });
+        } else {
+            new Setting(containerEl)
+                .setName('Reasoning Model')
+                .setDesc('Fast model for reasoning and decision-making')
+                .addDropdown(dropdown => {
+                    this.populateAgentModelDropdown(dropdown);
+                    dropdown.setValue(this.getAgentConfig().dualModel.reasoningModel);
+                    dropdown.onChange(async (value) => {
+                        await this.updateAgentConfig('dualModel.reasoningModel', value);
+                    });
+                });
+            
+            new Setting(containerEl)
+                .setName('Processing Model')
+                .setDesc('Quality model for processing and summarization')
+                .addDropdown(dropdown => {
+                    this.populateAgentModelDropdown(dropdown);
+                    dropdown.setValue(this.getAgentConfig().dualModel.processingModel);
+                    dropdown.onChange(async (value) => {
+                        await this.updateAgentConfig('dualModel.processingModel', value);
+                    });
+                });
+        }
 
         new Setting(containerEl)
             .setName('Default Post Processing Pattern')
@@ -420,5 +472,45 @@ export class LLMSettingTab extends PluginSettingTab {
         this.plugin.saveSettings();
         this.display(); // Refresh the entire settings display
         new Notice('New MCP server added. Configure the command and enable it.');
+    }
+
+    private getAgentConfig(): AgentModelConfig {
+        return this.plugin.settings.agentModelConfig || {
+            configType: 'single',
+            singleModel: this.plugin.settings.defaultModel || 'g25fp',
+            dualModel: {
+                reasoningModel: 'g25fp',
+                processingModel: 'g25p'
+            }
+        };
+    }
+
+    private async updateAgentConfig(path: string, value: any): Promise<void> {
+        if (!this.plugin.settings.agentModelConfig) {
+            this.plugin.settings.agentModelConfig = this.getAgentConfig();
+        }
+
+        const parts = path.split('.');
+        let target = this.plugin.settings.agentModelConfig as any;
+        
+        for (let i = 0; i < parts.length - 1; i++) {
+            target = target[parts[i]];
+        }
+        
+        target[parts[parts.length - 1]] = value;
+        await this.plugin.saveSettings();
+    }
+
+    private populateAgentModelDropdown(dropdown: any): void {
+        const agentModels = [
+            { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
+            { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
+            { id: 'g25f', label: 'Gemini-2.5-Flash' },
+            { id: 'g25p', label: 'Gemini-2.5-Pro' }
+        ];
+        
+        agentModels.forEach(model => {
+            dropdown.addOption(model.id, model.label);
+        });
     }
 }

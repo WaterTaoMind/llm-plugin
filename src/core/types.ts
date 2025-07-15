@@ -13,6 +13,21 @@ export interface ParsedCommand {
     originalPrompt: string;
 }
 
+// Model Configuration Types
+export interface ModelDefinition {
+    id: string;
+    label: string;
+}
+
+export interface AgentModelConfig {
+    configType: 'single' | 'dual';
+    singleModel: string;
+    dualModel: {
+        reasoningModel: string;
+        processingModel: string;
+    };
+}
+
 // MCP-specific types (defined early for use in settings)
 export interface MCPServerConfig {
     id: string;
@@ -50,6 +65,10 @@ export interface LLMPluginSettings {
     showModeSelector: boolean;
     // Agent Settings
     agentMaxSteps: number;
+    // Model Configuration (NEW)
+    models?: ModelDefinition[];
+    agentModels?: ModelDefinition[];
+    agentModelConfig?: AgentModelConfig;
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
