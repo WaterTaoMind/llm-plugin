@@ -313,6 +313,8 @@ export class InputArea {
 
         // Model selector
         this.modelSelector = controlsContainer.createEl('select', { cls: 'llm-model-selector' });
+        
+        // Populate model selector after it's created
         this.populateModelSelector();
 
         // Send button
@@ -322,6 +324,12 @@ export class InputArea {
 
     private populateModelSelector() {
         if (!this.configData) return;
+        
+        // Guard against undefined modelSelector during initialization
+        if (!this.modelSelector) {
+            console.log('⚠️ ModelSelector not initialized yet, skipping population');
+            return;
+        }
 
         // Clear existing options
         this.modelSelector.innerHTML = '';
@@ -530,8 +538,10 @@ export class InputArea {
         this.currentMode = mode;
         this.updateModeSelector();
         
-        // Refresh model selector when mode changes
-        this.populateModelSelector();
+        // Refresh model selector when mode changes (only if UI is initialized)
+        if (this.modelSelector) {
+            this.populateModelSelector();
+        }
         
         this.onModeChange(mode);
     }
