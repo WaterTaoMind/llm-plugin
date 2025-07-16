@@ -57,11 +57,12 @@ export class GeminiImageNode extends Node<AgentSharedState> {
     async prep(shared: AgentSharedState): Promise<ImageRequest> {
         console.log('🎨 GeminiImageNode: Preparing unified image request');
         
-        // Determine if this is generation or editing
-        const requestType = this.detectRequestType(shared);
-        console.log(`📋 Detected request type: ${requestType}`);
+        // LLM-based intelligent request type detection
+        const requestTypeResult = await this.detectRequestTypeWithLLM(shared);
+        console.log(`📋 LLM detected request type: ${requestTypeResult.requestType} (confidence: ${requestTypeResult.confidence})`);
+        console.log(`💭 LLM reasoning: ${requestTypeResult.reasoning}`);
         
-        if (requestType === 'editing') {
+        if (requestTypeResult.requestType === 'editing') {
             return await this.prepareEditingRequest(shared);
         } else {
             return await this.prepareGenerationRequest(shared);
@@ -488,7 +489,11 @@ Guidelines for enhancement:
 
 Respond with ONLY the enhanced prompt, no explanations or quotes.`;
 
-            const enhancedPrompt = await this.llmProvider.callLLM(enhancementPrompt);
+            const enhancedPrompt = await this.llmProvider.callLLM(
+                enhancementPrompt,
+                shared.modelConfig?.processing, // Use configured processing model
+                'You are an expert image prompt enhancer focused on quality and visual appeal.'
+            );
             
             console.log(`🎨 LLM Enhanced: "${basePrompt}" → "${enhancedPrompt}"`);
             return enhancedPrompt;
@@ -748,28 +753,137 @@ Respond with ONLY the enhanced prompt, no explanations or quotes.`;
     }
 
     /**
-     * Detect whether request is for generation or editing
+     * LLM-based intelligent request type detection
+     * Uses modelConfig.processing for consistent model usage
      */
-    private detectRequestType(shared: AgentSharedState): 'generation' | 'editing' {
+    private async detectRequestTypeWithLLM(shared: AgentSharedState): Promise<{
+        requestType: 'generation' | 'editing';
+        confidence: number;
+        reasoning: string;
+        imagePathDetected: boolean;
+        editKeywordsFound: string[];
+    }> {
+        try {
+            const prompt = this.buildRequestTypeDetectionPrompt(shared);
+            
+            const response = await this.llmProvider.callLLMWithSchema(
+                prompt,
+                this.getRequestTypeSchema(),
+                shared.modelConfig?.processing, // Use configured processing model
+                'You are an expert image task classifier that determines whether a request is for image generation or editing.'
+            );
+            
+            console.log(`🧠 LLM Request Type Analysis: ${response.requestType} (${(response.confidence * 100).toFixed(1)}%)`);
+            return response;
+            
+        } catch (error) {
+            console.warn('🔄 LLM detection failed, using rule-based fallback:', error);
+            return this.detectRequestTypeFallback(shared);
+        }
+    }
+
+    /**
+     * Fallback rule-based detection (original logic)
+     */
+    private detectRequestTypeFallback(shared: AgentSharedState): {
+        requestType: 'generation' | 'editing';
+        confidence: number;
+        reasoning: string;
+        imagePathDetected: boolean;
+        editKeywordsFound: string[];
+    } {
         const userRequest = shared.userRequest?.toLowerCase() || '';
         const currentImagePrompt = shared.currentImagePrompt?.toLowerCase() || '';
         
-        // Check for explicit image paths first (user provided)
         const hasImagePath = this.extractImagePath(userRequest);
-        
-        // Check for edit keywords in the CURRENT image prompt (not original user request)
-        // Use word boundaries to avoid false positives (e.g., "labeled" shouldn't match "label")
         const editKeywords = ['\\bedit\\b', '\\bmodify\\b', '\\bchange\\b', '\\bimprove\\b', '\\benhance\\b', '\\btransform\\b', '\\bupdate\\b', '\\balter\\b'];
-        const hasEditIntent = editKeywords.some(keyword => new RegExp(keyword, 'i').test(currentImagePrompt));
+        const foundKeywords = editKeywords.filter(keyword => new RegExp(keyword, 'i').test(currentImagePrompt));
+        const hasEditIntent = foundKeywords.length > 0;
         
-        // If has image path OR (edit keywords in current prompt AND previous images exist)
         if (hasImagePath || (hasEditIntent && this.hasAvailableImages(shared))) {
-            console.log(`🔧 Detected editing request: hasImagePath=${!!hasImagePath}, hasEditIntent=${hasEditIntent}, hasAvailableImages=${this.hasAvailableImages(shared)}`);
-            return 'editing';
+            return {
+                requestType: 'editing',
+                confidence: hasImagePath ? 0.9 : 0.7,
+                reasoning: hasImagePath ? 'Explicit image path detected' : 'Edit keywords found with available images',
+                imagePathDetected: !!hasImagePath,
+                editKeywordsFound: foundKeywords
+            };
         }
         
-        console.log(`🔧 Detected generation request: currentImagePrompt="${currentImagePrompt}"`);
-        return 'generation';
+        return {
+            requestType: 'generation',
+            confidence: 0.8,
+            reasoning: 'No edit indicators found, defaulting to generation',
+            imagePathDetected: false,
+            editKeywordsFound: []
+        };
+    }
+
+    /**
+     * Build context-aware prompt for LLM request type detection
+     */
+    private buildRequestTypeDetectionPrompt(shared: AgentSharedState): string {
+        const userRequest = shared.userRequest || '';
+        const currentImagePrompt = shared.currentImagePrompt || '';
+        const hasAvailableImages = this.hasAvailableImages(shared);
+        const imagePathInRequest = this.extractImagePath(userRequest);
+        
+        return `Analyze this image-related request and determine if it's for IMAGE GENERATION or IMAGE EDITING.
+
+## Request Analysis:
+**Original User Request:** ${userRequest}
+**Current Image Prompt:** ${currentImagePrompt}
+**Available Images:** ${hasAvailableImages ? 'Yes - previous images exist' : 'No - no images available'}
+**Explicit Image Path:** ${imagePathInRequest || 'None detected'}
+
+## Classification Rules:
+**IMAGE GENERATION** - Creating new images from scratch:
+- "Create an image of...", "Generate a diagram...", "Make a chart showing..."
+- Descriptive prompts without reference to existing images
+- First image in a sequence
+
+**IMAGE EDITING** - Modifying existing images:
+- "Edit this image...", "Modify the existing...", "Change the color of..."
+- References to specific existing images (paths, "the image", "previous image")
+- Enhancement/modification language with available images
+
+## Context Considerations:
+- If explicit image path is provided → ALWAYS editing
+- If no images available → ALWAYS generation (can't edit what doesn't exist)
+- If multiple images planned → subsequent requests may be generation OR editing
+
+Analyze the intent and classify the request type.`;
+    }
+
+    /**
+     * JSON schema for LLM request type detection response
+     */
+    private getRequestTypeSchema(): any {
+        return {
+            "type": "object",
+            "properties": {
+                "requestType": {
+                    "type": "string", 
+                    "enum": ["generation", "editing"]
+                },
+                "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                },
+                "reasoning": {
+                    "type": "string"
+                },
+                "imagePathDetected": {
+                    "type": "boolean"
+                },
+                "editKeywordsFound": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            },
+            "required": ["requestType", "confidence", "reasoning", "imagePathDetected", "editKeywordsFound"]
+        };
     }
 
     /**
@@ -991,7 +1105,11 @@ Guidelines for enhancement:
 
 Respond with ONLY the enhanced editing prompt, no explanations or quotes.`;
 
-            const enhancedPrompt = await this.llmProvider.callLLM(enhancementPrompt);
+            const enhancedPrompt = await this.llmProvider.callLLM(
+                enhancementPrompt,
+                shared.modelConfig?.processing, // Use configured processing model
+                'You are an expert image editing prompt enhancer.'
+            );
             
             console.log(`🎨 LLM Enhanced Editing: "${editInstructions}" → "${enhancedPrompt}"`);
             return enhancedPrompt;
