@@ -212,13 +212,13 @@ export class AgenticLLMService {
             const model = agentConfig.singleModel || this.settings.defaultModel || 'g25fp';
             return {
                 reasoning: model,
-                summarization: model,
+                processing: model,
                 default: model
             };
         } else {
             return {
                 reasoning: agentConfig?.dualModel?.reasoningModel || this.settings.defaultModel || 'g25fp',
-                summarization: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp',
+                processing: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp',
                 default: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp'
             };
         }

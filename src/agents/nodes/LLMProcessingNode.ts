@@ -23,7 +23,7 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
         super(maxRetries, waitTime);
     }
 
-    async prep(shared: AgentSharedState): Promise<{ prompt: string; content: string; request: LLMProcessingRequest }> {
+    async prep(shared: AgentSharedState): Promise<{ prompt: string; content: string; request: LLMProcessingRequest; modelConfig: any }> {
         const request = shared.nextLLMRequest;
         
         if (!request) {
@@ -41,12 +41,13 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
         return {
             prompt: request.prompt,
             content: content,
-            request: request
+            request: request,
+            modelConfig: shared.modelConfig
         };
     }
 
-    async exec(prepData: { prompt: string; content: string; request: LLMProcessingRequest }): Promise<string> {
-        const { prompt, content } = prepData;
+    async exec(prepData: { prompt: string; content: string; request: LLMProcessingRequest; modelConfig: any }): Promise<string> {
+        const { prompt, content, modelConfig } = prepData;
         
         console.log(`🔧 LLMProcessingNode: Executing ${prepData.request.task}`);
         
@@ -56,7 +57,7 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
         // Execute LLM processing - no JSON schema needed for content tasks
         const result = await this.llmProvider.callLLM(
             fullPrompt,
-            undefined, // Use default model
+            modelConfig?.processing, // Use configured processing model
             'You are a helpful assistant that processes content according to the given instructions.'
         );
         
@@ -68,7 +69,7 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
 
     async post(
         shared: AgentSharedState,
-        prepData: { prompt: string; content: string; request: LLMProcessingRequest },
+        prepData: { prompt: string; content: string; request: LLMProcessingRequest; modelConfig: any },
         result: string
     ): Promise<string> {
         const { request } = prepData;
@@ -178,7 +179,7 @@ export class LLMProcessingNode extends Node<AgentSharedState> {
      * Following PocketFlow execFallback pattern
      */
     async execFallback(
-        prepData: { prompt: string; content: string; request: LLMProcessingRequest },
+        prepData: { prompt: string; content: string; request: LLMProcessingRequest; modelConfig: any },
         error: Error
     ): Promise<string> {
         console.error('❌ LLM Processing failed:', error);

@@ -159,7 +159,7 @@ export interface LLMProcessingRequest {
 
 export interface ModelConfig {
     reasoning: string;
-    summarization: string;
+    processing: string;
     default: string;
 }
 

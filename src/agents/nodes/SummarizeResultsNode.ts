@@ -14,15 +14,18 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
         super(maxRetries, waitTime);
     }
 
-    async prep(shared: AgentSharedState): Promise<string> {
+    async prep(shared: AgentSharedState): Promise<{prompt: string; modelConfig: any}> {
         console.log('📋 Summarizing results...');
-        return this.buildSummaryPrompt(shared);
+        return {
+            prompt: this.buildSummaryPrompt(shared),
+            modelConfig: shared.modelConfig
+        };
     }
 
-    async exec(prompt: string): Promise<string> {
+    async exec(prepData: {prompt: string; modelConfig: any}): Promise<string> {
         const summary = await this.llmProvider.callLLM(
-            prompt,
-            undefined, // Use default model config
+            prepData.prompt,
+            prepData.modelConfig?.processing, // Use configured processing model
             'You are a helpful assistant that provides clear, concise summaries based on the provided information.'
         );
         
@@ -39,7 +42,7 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
 
     async post(
         shared: AgentSharedState,
-        prompt: string,
+        prepData: {prompt: string; modelConfig: any},
         summary: string
     ): Promise<string | undefined> {
         // Include generated images in the final result if any exist
@@ -63,11 +66,11 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
      * Fallback method when all retries fail
      * Following PocketFlow execFallback pattern
      */
-    async execFallback(prompt: string, error: Error): Promise<string> {
+    async execFallback(prepData: {prompt: string; modelConfig: any}, error: Error): Promise<string> {
         console.log('🔄 Using summarization fallback...');
         
         // Generate fallback summary from prompt content
-        const fallbackSummary = this.generateFallbackSummaryFromPrompt(prompt);
+        const fallbackSummary = this.generateFallbackSummaryFromPrompt(prepData.prompt);
         console.log(`✅ Fallback summary generated (${fallbackSummary.length} chars)`);
         
         return fallbackSummary;

@@ -98,6 +98,7 @@ export class ReActFlow {
         console.log('🚀 PocketFlow ReAct Agent - Starting execution');
         console.log(`📝 User Request: ${userRequest}`);
         console.log(`🔢 Max Steps: ${maxSteps}`);
+        console.log(`🎯 Model Config: reasoning=${this.modelConfig.reasoning}, processing=${this.modelConfig.processing}, default=${this.modelConfig.default}`);
 
         // Initialize shared state
         const sharedState: AgentSharedState = {
@@ -105,7 +106,7 @@ export class ReActFlow {
             maxSteps,
             currentStep: 0,
             actionHistory: [],
-            modelConfig: undefined, // Will be set by nodes if needed
+            modelConfig: this.modelConfig, // Use the configured model settings
             startTime: Date.now(),
             progressCallback: this.progressCallback,
             // NEW: Configuration and filesystem support

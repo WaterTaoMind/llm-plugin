@@ -112,6 +112,7 @@ export class GeminiImageNode extends Node<AgentSharedState> {
         console.log('✏️ Preparing image editing request');
         
         const userRequest = shared.userRequest || '';
+        const currentImagePrompt = shared.currentImagePrompt || '';
         
         // Resolve source image
         const sourceImage = await this.resolveSourceImage(userRequest, shared);
@@ -119,8 +120,8 @@ export class GeminiImageNode extends Node<AgentSharedState> {
             throw new Error('No source image found for editing request');
         }
         
-        // Extract editing instructions
-        const editInstructions = this.extractEditInstructions(userRequest);
+        // Extract editing instructions from current image prompt (not original user request)
+        const editInstructions = this.extractEditInstructions(currentImagePrompt);
         
         // Enhance editing prompt
         const enhancedPrompt = await this.enhanceEditingPrompt(editInstructions, shared);
@@ -751,19 +752,23 @@ Respond with ONLY the enhanced prompt, no explanations or quotes.`;
      */
     private detectRequestType(shared: AgentSharedState): 'generation' | 'editing' {
         const userRequest = shared.userRequest?.toLowerCase() || '';
+        const currentImagePrompt = shared.currentImagePrompt?.toLowerCase() || '';
         
         // Check for explicit image paths first (user provided)
         const hasImagePath = this.extractImagePath(userRequest);
         
-        // Check for edit keywords
-        const editKeywords = ['edit', 'modify', 'change', 'improve', 'enhance', 'style', 'transform', 'update', 'alter'];
-        const hasEditIntent = editKeywords.some(keyword => userRequest.includes(keyword));
+        // Check for edit keywords in the CURRENT image prompt (not original user request)
+        // Use word boundaries to avoid false positives (e.g., "labeled" shouldn't match "label")
+        const editKeywords = ['\\bedit\\b', '\\bmodify\\b', '\\bchange\\b', '\\bimprove\\b', '\\benhance\\b', '\\btransform\\b', '\\bupdate\\b', '\\balter\\b'];
+        const hasEditIntent = editKeywords.some(keyword => new RegExp(keyword, 'i').test(currentImagePrompt));
         
-        // If has image path OR (edit keywords AND previous images exist)
+        // If has image path OR (edit keywords in current prompt AND previous images exist)
         if (hasImagePath || (hasEditIntent && this.hasAvailableImages(shared))) {
+            console.log(`🔧 Detected editing request: hasImagePath=${!!hasImagePath}, hasEditIntent=${hasEditIntent}, hasAvailableImages=${this.hasAvailableImages(shared)}`);
             return 'editing';
         }
         
+        console.log(`🔧 Detected generation request: currentImagePrompt="${currentImagePrompt}"`);
         return 'generation';
     }
 
