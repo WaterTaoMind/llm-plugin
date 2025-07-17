@@ -65,14 +65,66 @@ export class MCPServerManager {
             console.log(`🔧 Python path: ${enhancedEnv.PATH?.split(':')[0]}`);
             console.log(`🔧 Working directory: ${enhancedEnv.PWD}`);
             
-            // Use stdio transport with enhanced environment
-            const transport = new StdioClientTransport({
-                command: config.command,
-                args: config.args,
-                env: enhancedEnv
-            });
+            // Choose transport type based on configuration
+            let transport: StdioClientTransport | StreamableHTTPClientTransport;
+            
+            if (config.httpUrl) {
+                console.log(`🌐 Using HTTP transport: ${config.httpUrl}`);
+                
+                // If both httpUrl and command are configured, check if server is already running
+                if (config.command && config.args) {
+                    const url = new URL(config.httpUrl);
+                    const isServerRunning = await this.checkServerRunning(url.hostname, parseInt(url.port) || 80);
+                    
+                    if (!isServerRunning) {
+                        console.log(`🚀 Starting HTTP server process: ${config.command} ${config.args.join(' ')}`);
+                        
+                        // Start the server process in the background
+                        const { spawn } = require('child_process');
+                        const serverProcess = spawn(config.command, config.args, {
+                            env: enhancedEnv,
+                            stdio: ['ignore', 'pipe', 'pipe'],
+                            detached: true,
+                            cwd: enhancedEnv.PWD
+                        });
+                        
+                        // Don't wait for the process to exit
+                        serverProcess.unref();
+                        
+                        // Log server output for debugging
+                        serverProcess.stdout?.on('data', (data: Buffer) => {
+                            console.log(`🔧 ${config.name} server:`, data.toString().trim());
+                        });
+                        
+                        serverProcess.stderr?.on('data', (data: Buffer) => {
+                            console.error(`🔧 ${config.name} server error:`, data.toString().trim());
+                        });
+                        
+                        console.log(`⏳ Waiting for HTTP server to start...`);
+                        // Wait for HTTP server to start
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+                    } else {
+                        console.log(`✅ HTTP server already running on ${config.httpUrl}`);
+                    }
+                }
+                
+                // MCP servers expect the endpoint at /mcp/
+                const mcpUrl = new URL(config.httpUrl);
+                mcpUrl.pathname = '/mcp/';
+                console.log(`🔗 MCP endpoint: ${mcpUrl.toString()}`);
+                transport = new StreamableHTTPClientTransport(mcpUrl);
+                
+            } else {
+                console.log(`📡 Using stdio transport`);
+                // Use stdio transport with enhanced environment
+                transport = new StdioClientTransport({
+                    command: config.command,
+                    args: config.args,
+                    env: enhancedEnv
+                });
+            }
 
-            // Create client with enhanced stdio handling
+            // Create client 
             const client = new Client({
                 name: "obsidian-llm-plugin",
                 version: "1.0.0"
@@ -80,33 +132,39 @@ export class MCPServerManager {
                 capabilities: {}
             });
 
-            // Patch transport to handle non-JSON stdio output
-            const originalSend = transport.send.bind(transport);
-            const originalClose = transport.close.bind(transport);
-            
-            // Override transport to add better error handling
-            (transport as any)._originalProcessMessage = (transport as any).processMessage;
-            (transport as any).processMessage = function(line: string) {
-                try {
-                    line = line.trim();
-                    if (!line) return;
-                    
-                    // Skip non-JSON lines (debug output from server)
-                    if (!line.startsWith('{') && !line.startsWith('[')) {
-                        console.debug(`🔧 MCP Server ${config.name}: Skipping non-JSON output:`, line);
+            // Apply transport-specific patches
+            if (config.httpUrl) {
+                // HTTP transport - no patching needed, works with standard MCP protocol
+                console.log(`🌐 HTTP transport ready for connection`);
+            } else {
+                // Stdio transport - apply patches to handle non-JSON stdio output
+                const originalSend = transport.send.bind(transport);
+                const originalClose = transport.close.bind(transport);
+                
+                // Override transport to add better error handling
+                (transport as any)._originalProcessMessage = (transport as any).processMessage;
+                (transport as any).processMessage = function(line: string) {
+                    try {
+                        line = line.trim();
+                        if (!line) return;
+                        
+                        // Skip non-JSON lines (debug output from server)
+                        if (!line.startsWith('{') && !line.startsWith('[')) {
+                            console.debug(`🔧 MCP Server ${config.name}: Skipping non-JSON output:`, line);
+                            return;
+                        }
+                        
+                        // Try to parse JSON
+                        JSON.parse(line);
+                        
+                        // If successful, call original handler
+                        return this._originalProcessMessage(line);
+                    } catch (error) {
+                        console.debug(`🔧 MCP Server ${config.name}: Skipping malformed JSON:`, line, error);
                         return;
                     }
-                    
-                    // Try to parse JSON
-                    JSON.parse(line);
-                    
-                    // If successful, call original handler
-                    return this._originalProcessMessage(line);
-                } catch (error) {
-                    console.debug(`🔧 MCP Server ${config.name}: Skipping malformed JSON:`, line, error);
-                    return;
-                }
-            };
+                };
+            }
 
             // Connect
             await client.connect(transport);
@@ -433,9 +491,13 @@ export class MCPServerManager {
                 }
 
                 // Try to list tools as a health check with timeout
+                // Use longer timeout for servers that handle long operations (like YouTube)
+                const isLongRunningServer = serverId === 'youtube-transcript';
+                const timeoutMs = isLongRunningServer ? 60000 : 5000; // 60s for YouTube, 5s for others
+                
                 const healthCheckPromise = connection.client.listTools();
                 const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Health check timeout')), 5000);
+                    setTimeout(() => reject(new Error('Health check timeout')), timeoutMs);
                 });
 
                 await Promise.race([healthCheckPromise, timeoutPromise]);
@@ -556,5 +618,31 @@ export class MCPServerManager {
     enableServer(serverId: string): void {
         this.failureCount.delete(serverId);
         console.log(`✅ Server ${serverId} re-enabled`);
+    }
+
+    /**
+     * Check if a server is already running on the specified host and port
+     */
+    private async checkServerRunning(hostname: string, port: number): Promise<boolean> {
+        return new Promise((resolve) => {
+            const net = require('net');
+            const socket = new net.Socket();
+            
+            const timeout = setTimeout(() => {
+                socket.destroy();
+                resolve(false);
+            }, 1000); // 1 second timeout
+            
+            socket.connect(port, hostname, () => {
+                clearTimeout(timeout);
+                socket.destroy();
+                resolve(true);
+            });
+            
+            socket.on('error', () => {
+                clearTimeout(timeout);
+                resolve(false);
+            });
+        });
     }
 }
