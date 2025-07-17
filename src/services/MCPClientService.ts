@@ -163,7 +163,7 @@ export class MCPClientService {
 
             // Execute with extended timeout for YouTube transcript operations
             const isYouTubeOp = toolName.includes('youtube') || toolName.includes('transcript') || toolName.includes('video');
-            const timeout = isYouTubeOp ? 360000 : this.settings.mcpToolTimeout; // 6 minutes for YouTube operations (audio download takes up to 5 minutes)
+            const timeout = isYouTubeOp ? 1800000 : this.settings.mcpToolTimeout; // 30 minutes for YouTube operations (long videos can take 20+ minutes)
             
             console.log(`🔧 Tool ${toolName}: Using timeout ${timeout}ms (YouTube operation: ${isYouTubeOp})`);
             
