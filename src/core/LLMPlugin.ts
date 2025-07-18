@@ -15,6 +15,9 @@ export class LLMPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
+        // Set MCP timeout environment variable for long-running operations
+        process.env.MCP_TIMEOUT = '1800000'; // 30 minutes
+
         // Initialize core services
         this.markdownProcessor = new MarkdownProcessor();
         this.styleManager = new StyleManager();

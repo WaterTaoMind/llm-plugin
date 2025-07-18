@@ -484,6 +484,12 @@ export class MCPServerManager {
                 return;
             }
 
+            // Skip health check for YouTube server to avoid interference with long-running operations
+            if (serverId === 'youtube-transcript') {
+                console.debug(`Skipping health check for ${serverId} - long-running operations server`);
+                return;
+            }
+
             try {
                 // Only check if we have a valid client
                 if (!connection.client) {
@@ -491,9 +497,7 @@ export class MCPServerManager {
                 }
 
                 // Try to list tools as a health check with timeout
-                // Use longer timeout for servers that handle long operations (like YouTube)
-                const isLongRunningServer = serverId === 'youtube-transcript';
-                const timeoutMs = isLongRunningServer ? 60000 : 5000; // 60s for YouTube, 5s for others
+                const timeoutMs = 5000; // 5s for regular servers
                 
                 const healthCheckPromise = connection.client.listTools();
                 const timeoutPromise = new Promise((_, reject) => {

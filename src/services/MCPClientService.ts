@@ -47,6 +47,15 @@ export class MCPClientService {
             return;
         }
 
+        // Set MCP timeout environment variables for long-running operations (YouTube transcripts)
+        process.env.MCP_TIMEOUT = '1800000'; // 30 minutes
+        process.env.MCP_TOOL_TIMEOUT = '1800000'; // 30 minutes for tool execution
+        process.env.MCP_REQUEST_TIMEOUT = '1800000'; // 30 minutes for requests
+        console.log('🕐 Set MCP timeout environment variables to 30 minutes for long-running operations');
+        console.log(`   MCP_TIMEOUT: ${process.env.MCP_TIMEOUT}`);
+        console.log(`   MCP_TOOL_TIMEOUT: ${process.env.MCP_TOOL_TIMEOUT}`);
+        console.log(`   MCP_REQUEST_TIMEOUT: ${process.env.MCP_REQUEST_TIMEOUT}`);
+
         console.log('Initializing MCP Client Service...');
 
         // Load configurations from files
