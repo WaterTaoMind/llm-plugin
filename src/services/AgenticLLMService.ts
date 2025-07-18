@@ -139,7 +139,7 @@ export class AgenticLLMService {
             const maxSteps = this.getMaxStepsForRequest(request);
             
             // Execute the TypeScript ReAct Agent
-            const agentResult = await this.reActFlow.execute(request.prompt, maxSteps);
+            const agentResult = await this.reActFlow.execute(request.prompt, maxSteps, request.signal);
 
             return {
                 result: agentResult.result,

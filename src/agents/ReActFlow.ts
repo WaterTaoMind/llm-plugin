@@ -94,7 +94,7 @@ export class ReActFlow {
      * @param maxSteps Maximum number of reasoning steps (default: 10)
      * @returns Object containing final response and any generated images
      */
-    async execute(userRequest: string, maxSteps: number = 10): Promise<{ result: string; images?: string[] }> {
+    async execute(userRequest: string, maxSteps: number = 10, abortSignal?: AbortSignal): Promise<{ result: string; images?: string[] }> {
         console.log('🚀 PocketFlow ReAct Agent - Starting execution');
         console.log(`📝 User Request: ${userRequest}`);
         console.log(`🔢 Max Steps: ${maxSteps}`);
@@ -109,6 +109,7 @@ export class ReActFlow {
             modelConfig: this.modelConfig, // Use the configured model settings
             startTime: Date.now(),
             progressCallback: this.progressCallback,
+            abortSignal,
             // NEW: Configuration and filesystem support
             mcpConfig: this.loadMCPConfig(),
             pluginWorkingDir: this.getPluginWorkingDir(),
@@ -116,9 +117,13 @@ export class ReActFlow {
         };
 
         try {
-            // Execute the flow using PocketFlow's automatic execution
-            // The flow will automatically follow the node chaining we set up
-            await this.flow.run(sharedState);
+            // Check for cancellation before starting
+            if (abortSignal?.aborted) {
+                throw new DOMException('Operation was cancelled', 'AbortError');
+            }
+            
+            // Execute the flow with cancellation monitoring
+            await this.executeWithCancellation(sharedState, abortSignal);
 
             const finalResult = sharedState.finalResult || 'Agent completed but no result was generated.';
             const actionCount = sharedState.actionHistory?.length || 0;
@@ -249,6 +254,102 @@ export class ReActFlow {
         // This will be set via dependency injection from AgenticLLMService
         // which has access to the plugin's data directory
         return this.pluginDataPath;
+    }
+
+    /**
+     * Execute the flow with cancellation monitoring
+     * Following PocketFlow best practices for graceful cancellation
+     */
+    private async executeWithCancellation(sharedState: AgentSharedState, abortSignal?: AbortSignal): Promise<void> {
+        // Create a cancellation promise that rejects when aborted
+        const cancellationPromise = new Promise<never>((_, reject) => {
+            if (abortSignal?.aborted) {
+                reject(new DOMException('Operation was cancelled', 'AbortError'));
+                return;
+            }
+            
+            const abortHandler = () => {
+                sharedState.cancelled = true;
+                reject(new DOMException('Operation was cancelled', 'AbortError'));
+            };
+            
+            abortSignal?.addEventListener('abort', abortHandler, { once: true });
+        });
+        
+        // Race the flow execution against cancellation
+        try {
+            await Promise.race([
+                this.flow.run(sharedState),
+                cancellationPromise
+            ]);
+        } catch (error) {
+            // If it's a cancellation error, perform graceful cleanup
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                await this.performGracefulCleanup(sharedState);
+                throw error;
+            }
+            
+            // For other errors, re-throw as-is
+            throw error;
+        }
+    }
+
+    /**
+     * Perform graceful cleanup for cancelled flows
+     * Ensures cancellation is harmless for following requests
+     */
+    private async performGracefulCleanup(sharedState: AgentSharedState): Promise<void> {
+        try {
+            console.log('🧹 Performing graceful cleanup after cancellation...');
+            
+            // Clean up any pending operations
+            if (sharedState.nextAction) {
+                console.log('  - Cleaning up pending action');
+                sharedState.nextAction = undefined;
+            }
+            
+            // Clean up any pending LLM requests
+            if (sharedState.nextLLMRequest) {
+                console.log('  - Cleaning up pending LLM request');
+                sharedState.nextLLMRequest = undefined;
+            }
+            
+            // Clean up partial reasoning state
+            if (sharedState.currentReasoning) {
+                console.log('  - Cleaning up partial reasoning state');
+                sharedState.currentReasoning = undefined;
+            }
+            
+            // Clean up any pending image generation
+            if (sharedState.currentImagePrompt) {
+                console.log('  - Cleaning up pending image generation');
+                sharedState.currentImagePrompt = undefined;
+                sharedState.imageProcessingComplete = false;
+            }
+            
+            // Clean up any pending TTS operations
+            if (sharedState.currentTTSText) {
+                console.log('  - Cleaning up pending TTS operation');
+                sharedState.currentTTSText = undefined;
+            }
+            
+            // Set final status to indicate clean cancellation
+            sharedState.goalStatus = 'cancelled';
+            sharedState.cancelled = true;
+            
+            // Generate a clean cancellation message
+            if (!sharedState.finalResult) {
+                sharedState.finalResult = 'Request was cancelled by user. No partial results to report.';
+            }
+            
+            console.log('✅ Graceful cleanup completed - ready for next request');
+        } catch (cleanupError) {
+            console.warn('⚠️ Error during graceful cleanup:', cleanupError);
+            // Don't throw cleanup errors - cancellation should still succeed
+            // Ensure minimum cleanup is done
+            sharedState.cancelled = true;
+            sharedState.goalStatus = 'cancelled';
+        }
     }
 
     /**

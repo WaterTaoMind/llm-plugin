@@ -22,6 +22,7 @@ export class LLMView extends ItemView {
         lastRequest: null
     };
     private currentProgressMessage?: HTMLElement;
+    private currentAbortController?: AbortController;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -100,6 +101,11 @@ export class LLMView extends ItemView {
             await this.sendMessage();
         };
 
+        // Handle cancel request
+        this.inputArea.onCancelRequest = () => {
+            this.cancelCurrentRequest();
+        };
+
         // Handle conversation ID actions
         this.inputArea.onGetConversationId = async () => {
             await this.getConversationIdFromCurrentNote();
@@ -154,15 +160,21 @@ export class LLMView extends ItemView {
         if (youtubeMatch) {
             try {
                 const url = youtubeMatch[1].trim();
-                const transcript = await this.llmService.getYouTubeTranscript(url);
+                const transcript = await this.llmService.getYouTubeTranscript(url, this.currentAbortController?.signal);
                 if (transcript) {
                     await this.processLLMRequest(transcript);
                     this.inputArea.setPromptValue('');
                 }
                 return;
             } catch (error) {
-                console.error('Failed to get YouTube transcript:', error);
-                new Notice('Failed to get YouTube transcript. Please check the URL and try again.');
+                if (error.name === 'AbortError') {
+                    console.log('YouTube transcript was cancelled by user');
+                    this.inputArea.showCancelled();
+                    new Notice('YouTube transcript cancelled');
+                } else {
+                    console.error('Failed to get YouTube transcript:', error);
+                    new Notice('Failed to get YouTube transcript. Please check the URL and try again.');
+                }
                 return;
             }
         }
@@ -241,6 +253,9 @@ export class LLMView extends ItemView {
         const images = this.inputArea.getImages();
 
         try {
+            // Create new AbortController for this request
+            this.currentAbortController = new AbortController();
+            
             this.setLoading(true);
 
             // Set up progress callback for agent mode
@@ -258,7 +273,8 @@ export class LLMView extends ItemView {
                 model,
                 options,
                 images,
-                conversationId
+                conversationId,
+                signal: this.currentAbortController.signal
             });
 
             if (response.error) {
@@ -283,9 +299,16 @@ export class LLMView extends ItemView {
             await this.imageService.cleanupScreenshots(screenshotPaths);
 
         } catch (error) {
-            console.error('Failed to get LLM response:', error);
-            new Notice('Failed to get LLM response. Please try again.');
+            if (error.name === 'AbortError') {
+                console.log('Request was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Request cancelled');
+            } else {
+                console.error('Failed to get LLM response:', error);
+                new Notice('Failed to get LLM response. Please try again.');
+            }
         } finally {
+            this.currentAbortController = undefined;
             this.setLoading(false);
         }
     }
@@ -550,28 +573,50 @@ export class LLMView extends ItemView {
 
     private async performTavilySearch(query: string) {
         try {
-            const results = await this.llmService.performTavilySearch(query);
+            const results = await this.llmService.performTavilySearch(query, this.currentAbortController?.signal);
             const searchResult = JSON.stringify(results, null, 2);
 
             // Display search query and results in chat
             this.appendToChatHistory(`@tavily ${query}`, searchResult);
             this.inputArea.setPromptValue('');
         } catch (error) {
-            console.error('Failed to perform Tavily search:', error);
-            new Notice('Failed to perform Tavily search. Please check your API key and try again.');
+            if (error.name === 'AbortError') {
+                console.log('Tavily search was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Tavily search cancelled');
+            } else {
+                console.error('Failed to perform Tavily search:', error);
+                new Notice('Failed to perform Tavily search. Please check your API key and try again.');
+            }
         }
     }
 
     private async performWebScrape(url: string) {
         try {
-            const content = await this.llmService.scrapeWebContent(url);
+            const content = await this.llmService.scrapeWebContent(url, this.currentAbortController?.signal);
 
             // Instead of just displaying content, send it to LLM
             await this.processLLMRequest(content);
             this.inputArea.setPromptValue('');
         } catch (error) {
-            console.error('Failed to scrape web content:', error);
-            new Notice('Failed to scrape web content. Please check the URL and try again.');
+            if (error.name === 'AbortError') {
+                console.log('Web scrape was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Web scrape cancelled');
+            } else {
+                console.error('Failed to scrape web content:', error);
+                new Notice('Failed to scrape web content. Please check the URL and try again.');
+            }
+        }
+    }
+
+    /**
+     * Cancel the current request
+     */
+    private cancelCurrentRequest() {
+        if (this.currentAbortController) {
+            console.log('Cancelling current request...');
+            this.currentAbortController.abort();
         }
     }
 

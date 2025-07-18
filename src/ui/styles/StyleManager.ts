@@ -7,6 +7,7 @@ export class StyleManager {
         this.addImageInputStyles();
         this.addChatStyles();
         this.addMCPStyles();
+        this.addButtonCancellationStyles();
     }
 
     removeStyles() {
@@ -719,6 +720,62 @@ export class StyleManager {
                 width: 16px;
                 height: 16px;
                 fill: currentColor;
+            }
+        `);
+        this.styleElements.push(styleEl);
+    }
+
+    private addButtonCancellationStyles() {
+        const styleEl = this.createStyleElement('llm-button-cancellation-styles', `
+            /* Button processing state */
+            .llm-button-processing {
+                background-color: var(--interactive-accent) !important;
+                color: var(--text-on-accent) !important;
+            }
+
+            /* Status text styling */
+            .llm-status-text {
+                font-size: 12px;
+                color: var(--text-muted);
+                margin-top: 4px;
+                text-align: center;
+                display: none;
+            }
+
+            /* Tooltip styles */
+            [data-tooltip] {
+                position: relative;
+            }
+
+            [data-tooltip]:hover::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--background-secondary);
+                color: var(--text-normal);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                white-space: nowrap;
+                z-index: 1000;
+                border: 1px solid var(--background-modifier-border);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            }
+
+            [data-tooltip]:hover::before {
+                content: '';
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%) translateY(100%);
+                width: 0;
+                height: 0;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid var(--background-modifier-border);
+                z-index: 1000;
             }
         `);
         this.styleElements.push(styleEl);

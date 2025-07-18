@@ -273,7 +273,7 @@ export class MCPServerManager {
     /**
      * Execute a tool on a specific server
      */
-    async executeTool(serverId: string, toolName: string, arguments_: Record<string, any>): Promise<any> {
+    async executeTool(serverId: string, toolName: string, arguments_: Record<string, any>, signal?: AbortSignal): Promise<any> {
         const connection = this.connections.get(serverId);
         if (!connection) {
             throw new Error(`Server ${serverId} not connected`);
@@ -287,10 +287,32 @@ export class MCPServerManager {
             console.log(`🔧 Executing tool ${toolName} on server ${serverId} with parameters:`, JSON.stringify(arguments_, null, 2));
             const startTime = Date.now();
             
-            const result = await connection.client.callTool({
+            // Create cancellation promise if signal is provided
+            const toolPromise = connection.client.callTool({
                 name: toolName,
                 arguments: arguments_
             });
+            
+            let result;
+            if (signal) {
+                // Race the tool execution against cancellation
+                const cancellationPromise = new Promise<never>((_, reject) => {
+                    if (signal.aborted) {
+                        reject(new DOMException('Tool execution was cancelled', 'AbortError'));
+                        return;
+                    }
+                    
+                    const abortHandler = () => {
+                        reject(new DOMException('Tool execution was cancelled', 'AbortError'));
+                    };
+                    
+                    signal.addEventListener('abort', abortHandler, { once: true });
+                });
+                
+                result = await Promise.race([toolPromise, cancellationPromise]);
+            } else {
+                result = await toolPromise;
+            }
             
             const executionTime = Date.now() - startTime;
             console.log(`✅ Tool ${toolName} completed in ${executionTime}ms`);

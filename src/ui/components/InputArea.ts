@@ -1,6 +1,6 @@
 import { Notice, App } from 'obsidian';
 import { Command, MCPServerConnection, ProcessingMode } from '../../core/types';
-import { SendIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
+import { SendIcon, StopIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
 import { joinPath, normalizePath, hasImageExtension } from '../../utils/pathUtils';
 import { MCPClientService } from '../../services/MCPClientService';
 
@@ -60,12 +60,17 @@ export class InputArea {
 
     // Event handlers
     public onSendMessage: () => void = () => {};
+    public onCancelRequest: () => void = () => {};
     public onGetConversationId: () => void = () => {};
     public onClearConversationId: () => void = () => {};
     public onModeChange: (mode: ProcessingMode) => void = () => {};
 
     // Mode selector state
     private currentMode: ProcessingMode = ProcessingMode.CHAT;
+
+    // Button state management
+    private isProcessing: boolean = false;
+    private statusText: HTMLElement | null = null;
 
     // MCP integration
     private mcpClientService?: MCPClientService;
@@ -317,9 +322,16 @@ export class InputArea {
         // Populate model selector after it's created
         this.populateModelSelector();
 
-        // Send button
-        this.sendButton = controlsContainer.createEl('button', { cls: 'llm-unified-send-button' });
+        // Send button with tooltip support
+        this.sendButton = controlsContainer.createEl('button', { 
+            cls: 'llm-unified-send-button',
+            attr: { 'data-tooltip': 'Submit' }
+        });
         this.sendButton.innerHTML = SendIcon;
+        
+        // Status text below button
+        this.statusText = this.unifiedInputContainer.createDiv({ cls: 'llm-status-text' });
+        this.statusText.style.display = 'none';
     }
 
     private populateModelSelector() {
@@ -1124,13 +1136,18 @@ export class InputArea {
     }
 
     private handleSendMessage() {
-        const prompt = this.promptInput.value.trim();
-        if (!prompt) {
-            new Notice('Please enter a message');
-            return;
+        if (this.isProcessing) {
+            // Cancel current request
+            this.onCancelRequest();
+        } else {
+            // Send new message
+            const prompt = this.promptInput.value.trim();
+            if (!prompt) {
+                new Notice('Please enter a message');
+                return;
+            }
+            this.onSendMessage();
         }
-
-        this.onSendMessage();
     }
 
     // Public methods
@@ -1181,13 +1198,45 @@ export class InputArea {
     }
 
     setLoading(loading: boolean) {
-        this.sendButton.disabled = loading;
+        this.isProcessing = loading;
         this.promptInput.disabled = loading;
 
         if (loading) {
-            this.sendButton.innerHTML = 'Sending...';
+            // Switch to stop icon and update tooltip
+            this.sendButton.innerHTML = StopIcon;
+            this.sendButton.setAttribute('data-tooltip', 'Cancel');
+            this.sendButton.classList.add('llm-button-processing');
+            
+            // Show "Thinking..." status
+            if (this.statusText) {
+                this.statusText.textContent = 'Thinking...';
+                this.statusText.style.display = 'block';
+            }
         } else {
+            // Switch back to send icon and update tooltip
             this.sendButton.innerHTML = SendIcon;
+            this.sendButton.setAttribute('data-tooltip', 'Submit');
+            this.sendButton.classList.remove('llm-button-processing');
+            
+            // Hide status text
+            if (this.statusText) {
+                this.statusText.style.display = 'none';
+            }
+        }
+    }
+
+    showCancelled() {
+        // Brief cancellation feedback
+        if (this.statusText) {
+            this.statusText.textContent = 'Request cancelled';
+            this.statusText.style.display = 'block';
+            
+            // Hide after 1 second
+            setTimeout(() => {
+                if (this.statusText) {
+                    this.statusText.style.display = 'none';
+                }
+            }, 1000);
         }
     }
 

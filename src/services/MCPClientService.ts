@@ -180,7 +180,7 @@ export class MCPClientService {
                 setTimeout(() => reject(new Error(`Tool execution timeout after ${timeout}ms`)), timeout);
             });
 
-            const executionPromise = this.serverManager.executeTool(serverId, toolName, args);
+            const executionPromise = this.serverManager.executeTool(serverId, toolName, args, toolCall.signal);
 
             const result = await Promise.race([executionPromise, timeoutPromise]);
 

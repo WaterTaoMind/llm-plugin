@@ -14,7 +14,13 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         super(maxRetries, waitTime);
     }
 
-    async prep(shared: AgentSharedState): Promise<{ state: AgentSharedState; currentStep: number }> {
+    async prep(shared: AgentSharedState): Promise<{ state: AgentSharedState; currentStep: number } | null> {
+        // Check for cancellation before processing - graceful early exit
+        if (shared.cancelled) {
+            console.log('🛑 Reasoning node prep: Operation was cancelled, ending reasoning gracefully');
+            return null; // Return null to skip execution gracefully
+        }
+        
         const currentStep = (shared.currentStep || 0) + 1;
         const maxSteps = shared.maxSteps || 10;
         
@@ -30,8 +36,18 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         return { state: shared, currentStep };
     }
 
-    async exec(prepData: { state: AgentSharedState; currentStep: number }): Promise<ReasoningResponse> {
+    async exec(prepData: { state: AgentSharedState; currentStep: number } | null): Promise<ReasoningResponse | null> {
+        if (!prepData) {
+            return null; // Handle graceful cancellation
+        }
+        
         const { state, currentStep } = prepData;
+        
+        // Check for cancellation before processing - graceful early exit
+        if (state.cancelled) {
+            console.log('🛑 Reasoning node exec: Operation was cancelled, returning null');
+            return null; // Return null to handle cancellation gracefully
+        }
         
         console.log(`🔧 ReActReasoningNode: Executing reasoning step`);
         
@@ -74,9 +90,14 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
 
     async post(
         shared: AgentSharedState,
-        prepData: { state: AgentSharedState; currentStep: number },
-        reasoning: ReasoningResponse
+        prepData: { state: AgentSharedState; currentStep: number } | null,
+        reasoning: ReasoningResponse | null
     ): Promise<string | undefined> {
+        if (!prepData || !reasoning) {
+            // Handle graceful cancellation
+            console.log('🛑 Reasoning node post: Operation was cancelled, ending flow');
+            return undefined; // Return undefined to end the flow gracefully
+        }
         const { currentStep } = prepData;
         const maxSteps = shared.maxSteps || 10;
         

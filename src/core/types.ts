@@ -117,6 +117,7 @@ export interface LLMRequest {
     images: string[];
     conversationId?: string;
     tools?: MCPTool[]; // Available MCP tools for LLM function calling
+    signal?: AbortSignal; // Optional signal for request cancellation
 }
 
 export interface LLMResponse {
@@ -159,6 +160,7 @@ export interface MCPToolCall {
     toolName: string;
     serverId: string;
     arguments: Record<string, any>;
+    signal?: AbortSignal;
 }
 
 export interface MCPToolResult {

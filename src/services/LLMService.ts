@@ -165,7 +165,8 @@ export class LLMService {
                         'Accept': 'application/json',
                         'X-API-Key': this.settings.llmConnectorApiKey
                     },
-                    body: JSON.stringify(requestBody)
+                    body: JSON.stringify(requestBody),
+                    signal: request.signal
                 },
                 retryOptions,
                 'Chat Mode LLM API call'
@@ -264,7 +265,8 @@ export class LLMService {
                     json_mode: false,
                     images: originalRequest.images,
                     conversation_id: previousResponse.conversation_id
-                })
+                }),
+                signal: originalRequest.signal
             });
 
             if (!response.ok) {
@@ -295,7 +297,7 @@ export class LLMService {
         return tool?.serverId || '';
     }
 
-    async getYouTubeTranscript(url: string): Promise<string> {
+    async getYouTubeTranscript(url: string, signal?: AbortSignal): Promise<string> {
         try {
             const response = await fetch(`${this.settings.llmConnectorApiUrl}/yt`, {
                 method: 'POST',
@@ -307,7 +309,8 @@ export class LLMService {
                 body: JSON.stringify({ 
                     url: url,
                     stream: false 
-                })
+                }),
+                signal
             });
 
             if (!response.ok) {
@@ -344,7 +347,7 @@ export class LLMService {
         }
     }
 
-    async performTavilySearch(query: string): Promise<any> {
+    async performTavilySearch(query: string, signal?: AbortSignal): Promise<any> {
         try {
             const response = await fetch('https://api.tavily.com/search', {
                 method: 'POST',
@@ -358,7 +361,8 @@ export class LLMService {
                     include_images: true,
                     search_depth: "basic",
                     api_key: this.settings.tavilyApiKey
-                })
+                }),
+                signal
             });
 
             if (!response.ok) {
@@ -372,7 +376,7 @@ export class LLMService {
         }
     }
 
-    async scrapeWebContent(url: string): Promise<string> {
+    async scrapeWebContent(url: string, signal?: AbortSignal): Promise<string> {
         try {
             // Ensure URL starts with http:// or https://
             if (!url.startsWith('http://') && !url.startsWith('https://')) {
@@ -380,7 +384,7 @@ export class LLMService {
             }
 
             const jinaUrl = `https://r.jina.ai/${url}`;
-            const response = await fetch(jinaUrl);
+            const response = await fetch(jinaUrl, { signal });
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);

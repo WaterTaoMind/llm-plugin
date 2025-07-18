@@ -14,7 +14,15 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
         super(maxRetries, waitTime);
     }
 
-    async prep(shared: AgentSharedState): Promise<{prompt: string; modelConfig: any}> {
+    async prep(shared: AgentSharedState): Promise<{prompt: string; modelConfig: any} | null> {
+        // Check for cancellation before processing - graceful early exit
+        if (shared.cancelled) {
+            console.log('🛑 Summarize node prep: Operation was cancelled, providing cancellation result');
+            // For cancellation, we want to provide a clean final result
+            shared.finalResult = 'Request was cancelled by user.';
+            return null; // Return null to skip execution gracefully
+        }
+        
         console.log('📋 Summarizing results...');
         return {
             prompt: this.buildSummaryPrompt(shared),
@@ -22,7 +30,11 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
         };
     }
 
-    async exec(prepData: {prompt: string; modelConfig: any}): Promise<string> {
+    async exec(prepData: {prompt: string; modelConfig: any} | null): Promise<string | null> {
+        if (!prepData) {
+            return null; // Handle graceful cancellation
+        }
+        
         const summary = await this.llmProvider.callLLM(
             prepData.prompt,
             prepData.modelConfig?.processing, // Use configured processing model
@@ -42,9 +54,14 @@ export class SummarizeResultsNode extends Node<AgentSharedState> {
 
     async post(
         shared: AgentSharedState,
-        prepData: {prompt: string; modelConfig: any},
-        summary: string
+        prepData: {prompt: string; modelConfig: any} | null,
+        summary: string | null
     ): Promise<string | undefined> {
+        if (!prepData || !summary) {
+            // Handle graceful cancellation - final result already set in prep
+            console.log('🛑 Summarize node post: Operation was cancelled, using cancellation result');
+            return undefined; // End flow gracefully
+        }
         // Include generated images in the final result if any exist
         let finalResult = summary;
         

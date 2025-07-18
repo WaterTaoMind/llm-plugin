@@ -14,7 +14,13 @@ export class ReActActionNode extends Node<AgentSharedState> {
         super(maxRetries, waitTime);
     }
 
-    async prep(shared: AgentSharedState): Promise<{ action: any; currentStep: number } | null> {
+    async prep(shared: AgentSharedState): Promise<{ action: any; currentStep: number; signal?: AbortSignal } | null> {
+        // Check for cancellation before processing - graceful early exit
+        if (shared.cancelled) {
+            console.log('🛑 Action node prep: Operation was cancelled, skipping action execution');
+            return null; // Return null to skip execution gracefully
+        }
+        
         const action = shared.nextAction;
         const currentStep = shared.currentStep || 1;
         
@@ -36,21 +42,28 @@ export class ReActActionNode extends Node<AgentSharedState> {
             parameters: Object.keys(action.parameters)
         }, currentStep);
         
-        return { action, currentStep };
+        return { action, currentStep, signal: shared.abortSignal };
     }
 
-    async exec(prepData: { action: any; currentStep: number } | null): Promise<string | null> {
+    async exec(prepData: { action: any; currentStep: number; signal?: AbortSignal } | null): Promise<string | null> {
         if (!prepData) {
             return null; // No action to execute
         }
         
-        const { action } = prepData;
+        const { action, signal } = prepData;
         
-        // Execute the tool via MCP client
+        // Check for cancellation before executing tool
+        if (signal?.aborted) {
+            console.log('🛑 Action node exec: Operation was cancelled before tool execution');
+            return null; // Return null to handle cancellation gracefully
+        }
+        
+        // Execute the tool via MCP client with cancellation support
         const result = await this.mcpClient.callTool(
             action.server,
             action.tool,
-            action.parameters
+            action.parameters,
+            signal
         );
         
         // Validate result
@@ -171,11 +184,17 @@ export class ReActActionNode extends Node<AgentSharedState> {
 
     /**
      * Fallback method when all retries fail
-     * Following PocketFlow execFallback pattern
+     * Following PocketFlow execFallback pattern with cancellation handling
      */
-    async execFallback(prepData: { action: any; currentStep: number } | null, error: Error): Promise<string | null> {
+    async execFallback(prepData: { action: any; currentStep: number; signal?: AbortSignal } | null, error: Error): Promise<string | null> {
         if (!prepData) {
             return null;
+        }
+        
+        // Handle cancellation gracefully in fallback
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            console.log('🛑 Action node fallback: Operation was cancelled, returning null');
+            return null; // Return null for cancellation to avoid error propagation
         }
         
         console.log('🔄 Using action execution fallback...');

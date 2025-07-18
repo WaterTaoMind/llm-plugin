@@ -43,14 +43,20 @@ export class MCPClientAdapter implements MCPClient {
     /**
      * Call a specific tool on a specific server
      */
-    async callTool(serverName: string, toolName: string, parameters: Record<string, any>): Promise<string> {
+    async callTool(serverName: string, toolName: string, parameters: Record<string, any>, signal?: AbortSignal): Promise<string> {
         try {
+            // Check for cancellation before making the call
+            if (signal?.aborted) {
+                throw new DOMException('Operation was cancelled', 'AbortError');
+            }
+            
             // Create a tool call in the format expected by MCPClientService
             const toolCall = {
                 id: `tool_${Date.now()}`,
                 toolName: toolName,
                 serverId: serverName,
-                arguments: parameters
+                arguments: parameters,
+                signal: signal
             };
             
             const results = await this.mcpClientService.executeToolCalls([toolCall]);
@@ -75,6 +81,11 @@ export class MCPClientAdapter implements MCPClient {
                 return String(content);
             }
         } catch (error) {
+            // Handle cancellation gracefully
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                console.log(`🛑 Tool ${toolName} on server ${serverName} was cancelled`);
+                throw error; // Re-throw cancellation to bubble up
+            }
             throw new Error(`Failed to call tool ${toolName} on server ${serverName}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }

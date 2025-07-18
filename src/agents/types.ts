@@ -74,6 +74,10 @@ export interface AgentSharedState {
     startTime?: number;
     progressCallback?: ProgressCallback;
     
+    // Cancellation Support
+    abortSignal?: AbortSignal;
+    cancelled?: boolean;
+    
     // Configuration
     modelConfig?: ModelConfig;
     imageConfig?: ImageGenerationConfig;
@@ -172,5 +176,5 @@ export interface LLMProvider {
 // MCP Client interface for dependency injection  
 export interface MCPClient {
     getAllTools(): Promise<Record<string, MCPTool[]>>;
-    callTool(serverName: string, toolName: string, parameters: Record<string, any>): Promise<string>;
+    callTool(serverName: string, toolName: string, parameters: Record<string, any>, signal?: AbortSignal): Promise<string>;
 }
