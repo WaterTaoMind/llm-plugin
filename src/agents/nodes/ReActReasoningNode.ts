@@ -63,9 +63,31 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
             ? JSON.parse(response) 
             : response;
         
-        // Validate the response
-        if (!reasoning.reasoning || !reasoning.decision || !reasoning.goalStatus) {
-            throw new Error('Invalid reasoning response structure');
+        // Validate the response structure and types
+        if (!reasoning || typeof reasoning !== 'object') {
+            throw new Error('Reasoning response must be an object');
+        }
+        
+        if (!reasoning.reasoning || typeof reasoning.reasoning !== 'string') {
+            console.error('🚨 Invalid reasoning field:', typeof reasoning.reasoning, reasoning.reasoning);
+            throw new Error(`Reasoning field must be a non-empty string, but received ${typeof reasoning.reasoning}: ${JSON.stringify(reasoning.reasoning)}`);
+        }
+        
+        if (!reasoning.decision || typeof reasoning.decision !== 'string') {
+            console.error('🚨 Invalid decision field:', typeof reasoning.decision, reasoning.decision);
+            throw new Error(`Decision field must be a non-empty string, but received ${typeof reasoning.decision}: ${JSON.stringify(reasoning.decision)}`);
+        }
+        
+        if (!reasoning.goalStatus || typeof reasoning.goalStatus !== 'string') {
+            console.error('🚨 Invalid goalStatus field:', typeof reasoning.goalStatus, reasoning.goalStatus);
+            throw new Error(`GoalStatus field must be a non-empty string, but received ${typeof reasoning.goalStatus}: ${JSON.stringify(reasoning.goalStatus)}`);
+        }
+        
+        // Validate decision enum
+        const validDecisions = ["continue", "complete", "llm_processing", "process_image", "generate_speech"];
+        if (!validDecisions.includes(reasoning.decision)) {
+            console.error('🚨 Invalid decision value:', reasoning.decision);
+            throw new Error(`Decision must be one of ${validDecisions.join(', ')}, but received: ${reasoning.decision}`);
         }
         
         console.log(`💭 Reasoning: ${reasoning.reasoning}`);
@@ -115,6 +137,22 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                 throw new Error('LLM processing decision requires llmTask, llmPrompt, and inputHistoryId');
             }
             
+            // Validate that required fields are actually strings
+            if (typeof reasoning.llmTask !== 'string') {
+                console.error('🚨 Invalid llmTask type:', typeof reasoning.llmTask, reasoning.llmTask);
+                throw new Error(`LLM processing requires llmTask to be a string, but received ${typeof reasoning.llmTask}: ${JSON.stringify(reasoning.llmTask)}`);
+            }
+            
+            if (typeof reasoning.llmPrompt !== 'string') {
+                console.error('🚨 Invalid llmPrompt type:', typeof reasoning.llmPrompt, reasoning.llmPrompt);
+                throw new Error(`LLM processing requires llmPrompt to be a string, but received ${typeof reasoning.llmPrompt}: ${JSON.stringify(reasoning.llmPrompt)}`);
+            }
+            
+            if (typeof reasoning.inputHistoryId !== 'string') {
+                console.error('🚨 Invalid inputHistoryId type:', typeof reasoning.inputHistoryId, reasoning.inputHistoryId);
+                throw new Error(`LLM processing requires inputHistoryId to be a string, but received ${typeof reasoning.inputHistoryId}: ${JSON.stringify(reasoning.inputHistoryId)}`);
+            }
+            
             // Handle special case: "user_request" refers to original user request
             let inputHistoryId = reasoning.inputHistoryId;
             if (inputHistoryId === 'user_request') {
@@ -156,6 +194,17 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                 throw new Error('Image processing decision requires imagePrompt');
             }
             
+            // Validate that imagePrompt is actually a string
+            if (typeof reasoning.imagePrompt !== 'string') {
+                console.error('🚨 Invalid imagePrompt type:', typeof reasoning.imagePrompt, reasoning.imagePrompt);
+                throw new Error(`Image processing requires imagePrompt to be a string, but received ${typeof reasoning.imagePrompt}: ${JSON.stringify(reasoning.imagePrompt)}`);
+            }
+            
+            // Validate that imagePrompt is not empty
+            if (reasoning.imagePrompt.trim().length === 0) {
+                throw new Error('Image processing requires non-empty imagePrompt');
+            }
+            
             // Set the image prompt and configuration in shared state
             shared.currentImagePrompt = reasoning.imagePrompt;
             
@@ -171,6 +220,17 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
         if (reasoning.decision === 'generate_speech') {
             if (!reasoning.ttsText) {
                 throw new Error('TTS processing decision requires ttsText');
+            }
+            
+            // Validate that ttsText is actually a string
+            if (typeof reasoning.ttsText !== 'string') {
+                console.error('🚨 Invalid ttsText type:', typeof reasoning.ttsText, reasoning.ttsText);
+                throw new Error(`TTS processing requires ttsText to be a string, but received ${typeof reasoning.ttsText}: ${JSON.stringify(reasoning.ttsText)}`);
+            }
+            
+            // Validate that ttsText is not empty
+            if (reasoning.ttsText.trim().length === 0) {
+                throw new Error('TTS processing requires non-empty ttsText');
             }
             
             // Set the TTS text and configuration in shared state
@@ -524,7 +584,25 @@ export class ReActReasoningNode extends Node<AgentSharedState> {
                     }
                 }
             },
-            "required": ["reasoning", "decision", "goalStatus"]
+            "required": ["reasoning", "decision", "goalStatus"],
+            "allOf": [
+                {
+                    "if": {"properties": {"decision": {"const": "continue"}}},
+                    "then": {"required": ["action"]}
+                },
+                {
+                    "if": {"properties": {"decision": {"const": "llm_processing"}}},
+                    "then": {"required": ["llmTask", "llmPrompt", "inputHistoryId"]}
+                },
+                {
+                    "if": {"properties": {"decision": {"const": "process_image"}}},
+                    "then": {"required": ["imagePrompt"]}
+                },
+                {
+                    "if": {"properties": {"decision": {"const": "generate_speech"}}},
+                    "then": {"required": ["ttsText"]}
+                }
+            ]
         };
     }
 }
