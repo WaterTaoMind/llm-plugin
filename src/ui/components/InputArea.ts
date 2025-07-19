@@ -129,15 +129,16 @@ export class InputArea {
                 let fileConfig = JSON.parse(configContent);
                 console.log(`🔍 Parsed config:`, fileConfig);
 
-                // Auto-migrate: Add agent models if missing (Gemini-only)
+                // Auto-migrate: Add agent models if missing
                 if (!fileConfig.agentModels) {
                     fileConfig.agentModels = [
                         { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
                         { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
                         { id: 'g25f', label: 'Gemini-2.5-Flash' },
-                        { id: 'g25p', label: 'Gemini-2.5-Pro' }
+                        { id: 'g25p', label: 'Gemini-2.5-Pro' },
+                        { id: 'k2', label: 'Kimi-K2-Preview' }
                     ];
-                    console.log('📋 Added default agent models');
+                    console.log('📋 Added default agent models with k2');
                 }
 
                 // Auto-migrate: Add agent config if missing
@@ -194,7 +195,8 @@ export class InputArea {
                     { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
                     { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
                     { id: 'g25f', label: 'Gemini-2.5-Flash' },
-                    { id: 'g25p', label: 'Gemini-2.5-Pro' }
+                    { id: 'g25p', label: 'Gemini-2.5-Pro' },
+                    { id: 'k2', label: 'Kimi-K2-Preview' }
                 ],
                 agentModelConfig: {
                     configType: 'single',

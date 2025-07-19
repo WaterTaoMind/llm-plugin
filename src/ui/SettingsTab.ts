@@ -502,7 +502,8 @@ export class LLMSettingTab extends PluginSettingTab {
     }
 
     private populateAgentModelDropdown(dropdown: any): void {
-        const agentModels = [
+        // Use agentModels from settings if available, otherwise fall back to hardcoded list
+        const agentModels = this.plugin.settings.agentModels || [
             { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
             { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
             { id: 'g25f', label: 'Gemini-2.5-Flash' },
