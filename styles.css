@@ -959,8 +959,16 @@
   box-shadow: 0 0 0 1px rgba(var(--interactive-accent-rgb, 123, 108, 196), 0.1);
 }
 
-/* Smooth transitions for all interactive elements */
-* {
+/* Smooth transitions for LLM plugin elements only - avoid interfering with other plugins */
+.llm-chat-view *,
+.llm-unified-input-container *,
+.llm-chat-history *,
+.llm-function-pill,
+.llm-unified-send-button,
+.llm-template-selector,
+.llm-model-selector,
+.llm-image-preview-wrapper,
+.llm-image-delete-btn {
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
