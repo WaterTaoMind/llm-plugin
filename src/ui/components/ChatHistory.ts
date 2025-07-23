@@ -1,5 +1,6 @@
 import { ChatMessage } from '../../core/types';
 import { UserIcon, ChatbotIcon } from '../../constants/icons';
+import { Notice } from 'obsidian';
 
 export class ChatHistory {
     public container: HTMLElement;
@@ -183,6 +184,7 @@ export class ChatHistory {
             
             button.classList.add('copied');
             setTimeout(() => button.classList.remove('copied'), 1000);
+            new Notice('Image copied to clipboard');
         } catch (error) {
             console.error('Failed to copy image to clipboard:', error);
             // Fallback: copy as data URL
@@ -190,8 +192,10 @@ export class ChatHistory {
                 await navigator.clipboard.writeText(`data:image/jpeg;base64,${imageData}`);
                 button.classList.add('copied');
                 setTimeout(() => button.classList.remove('copied'), 1000);
+                new Notice('Image copied to clipboard');
             } catch (fallbackError) {
                 console.error('Failed to copy image data URL:', fallbackError);
+                new Notice('Failed to copy image to clipboard');
             }
         }
     }
@@ -241,6 +245,9 @@ export class ChatHistory {
         navigator.clipboard.writeText(content).then(() => {
             button.classList.add('copied');
             setTimeout(() => button.classList.remove('copied'), 1000);
+            new Notice('Copied to clipboard');
+        }).catch(() => {
+            new Notice('Failed to copy to clipboard');
         });
     }
 
