@@ -41,7 +41,7 @@ export class MCPServerManager {
             }
 
             // Create transport with enhanced environment and stdio filtering
-            const enhancedEnv = {
+            const baseEnv = {
                 ...process.env,
                 ...config.env,
                 // Ensure Python path and conda environment
@@ -54,12 +54,16 @@ export class MCPServerManager {
                 // Disable verbose output from MCP server to reduce non-JSON noise
                 PYTHONUNBUFFERED: '1',
                 // Suppress debug output that might interfere with JSON parsing
-                LOG_LEVEL: 'ERROR',
-                // Explicitly pass API keys to ensure they're available
-                YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
-                Assemblyai_api_key: process.env.Assemblyai_api_key,
-                Groq_api_key: process.env.Groq_api_key
+                LOG_LEVEL: 'ERROR'
             };
+
+            // Add API keys only if they exist (filter out undefined values)
+            const apiKeys: Record<string, string> = {};
+            if (process.env.YOUTUBE_API_KEY) apiKeys.YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+            if (process.env.Assemblyai_api_key) apiKeys.Assemblyai_api_key = process.env.Assemblyai_api_key;
+            if (process.env.Groq_api_key) apiKeys.Groq_api_key = process.env.Groq_api_key;
+
+            const enhancedEnv = { ...baseEnv, ...apiKeys };
             
             console.log(`🔧 MCP Server ${config.name}: Enhanced environment prepared`);
             console.log(`🔧 Python path: ${enhancedEnv.PATH?.split(':')[0]}`);
