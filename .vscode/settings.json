@@ -1,0 +1,19 @@
+{
+  // Editor font
+  "editor.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",
+  "editor.fontSize": 18,
+  "editor.fontLigatures": true,
+  "editor.lineHeight": 1.4,           // Improves readability by spacing lines out
+  "editor.letterSpacing": 0.5,        // Subtle spacing to reduce crowding
+
+  // Terminal font (affects extensions like GitLens, Terminal, etc.)
+  "terminal.integrated.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",
+  "terminal.integrated.fontSize": 16,
+
+  // Output panels (Problems, Debug Console, etc.)
+  "workbench.fontAliasing": "antialiased",
+  "editor.inlayHints.fontFamily": "Fira Code",
+  "markdown.preview.fontFamily": "Fira Code, sans-serif"
+  "markdown.preview.fontSize": 20,   // or any px value you prefer
+  "markdown.preview.lineHeight": 1.6  // optional: adds spacing between lines
+}
