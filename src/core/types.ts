@@ -1,5 +1,46 @@
 // Core type definitions for the LLM Plugin
 
+// Processing Mode System
+export enum ProcessingMode {
+    CHAT = 'chat',
+    AGENT = 'agent'
+}
+
+// Command Processing Types
+export interface ParsedCommand {
+    mode: ProcessingMode | null; // null means use UI selected mode
+    cleanPrompt: string; // prompt with command prefix removed
+    originalPrompt: string;
+}
+
+// Model Configuration Types
+export interface ModelDefinition {
+    id: string;
+    label: string;
+}
+
+export interface AgentModelConfig {
+    configType: 'single' | 'dual';
+    singleModel: string;
+    dualModel: {
+        reasoningModel: string;
+        processingModel: string;
+    };
+}
+
+// MCP-specific types (defined early for use in settings)
+export interface MCPServerConfig {
+    id: string;
+    name: string;
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    enabled: boolean;
+    autoReconnect: boolean;
+    description?: string;
+    httpUrl?: string; // Optional HTTP URL for servers that support HTTP transport
+}
+
 export interface LLMPluginSettings {
     llmConnectorApiUrl: string;
     llmConnectorApiKey: string;
@@ -11,6 +52,23 @@ export interface LLMPluginSettings {
     defaultPostProcessingPattern: string;
     debug: boolean;
     tavilyApiKey: string;
+    // Gemini Integration Settings
+    geminiApiKey: string;
+    // MCP Settings
+    mcpServers: MCPServerConfig[];
+    mcpEnabled: boolean;
+    mcpAutoConnect: boolean;
+    mcpToolTimeout: number;
+    mcpShowToolExecution: boolean;
+    // Processing Mode Settings
+    defaultMode: ProcessingMode;
+    showModeSelector: boolean;
+    // Agent Settings
+    agentMaxSteps: number;
+    // Model Configuration (NEW)
+    models?: ModelDefinition[];
+    agentModels?: ModelDefinition[];
+    agentModelConfig?: AgentModelConfig;
 }
 
 export const DEFAULT_SETTINGS: LLMPluginSettings = {
@@ -23,7 +81,20 @@ export const DEFAULT_SETTINGS: LLMPluginSettings = {
     defaultModel: 'gpt-4o',
     defaultPostProcessingPattern: '',
     debug: false,
-    tavilyApiKey: ''
+    tavilyApiKey: '',
+    // Gemini Integration Defaults
+    geminiApiKey: '',
+    // MCP Default Settings
+    mcpServers: [],
+    mcpEnabled: true,
+    mcpAutoConnect: true,
+    mcpToolTimeout: 30000, // 30 seconds
+    mcpShowToolExecution: true,
+    // Processing Mode Defaults
+    defaultMode: ProcessingMode.CHAT,
+    showModeSelector: true,
+    // Agent Defaults
+    agentMaxSteps: 20
 };
 
 export interface FileWithPath extends File {
@@ -45,12 +116,16 @@ export interface LLMRequest {
     options: string[];
     images: string[];
     conversationId?: string;
+    tools?: MCPTool[]; // Available MCP tools for LLM function calling
+    signal?: AbortSignal; // Optional signal for request cancellation
 }
 
 export interface LLMResponse {
     result: string;
     conversationId?: string;
     error?: string;
+    images?: string[]; // Base64-encoded generated images
+    toolCalls?: MCPToolCall[]; // Tools LLM decided to call
 }
 
 export interface Command {
@@ -69,4 +144,46 @@ export interface ImageProcessingResult {
     path: string;
     isDataUrl: boolean;
     isValid: boolean;
+}
+
+// Additional MCP types
+export interface MCPTool {
+    name: string;
+    description: string;
+    inputSchema: any;
+    serverId: string;
+    serverName: string;
+}
+
+export interface MCPToolCall {
+    id: string;
+    toolName: string;
+    serverId: string;
+    arguments: Record<string, any>;
+    signal?: AbortSignal;
+}
+
+export interface MCPToolResult {
+    toolCallId: string;
+    success: boolean;
+    content: string | any[];
+    error?: string;
+}
+
+export interface MCPServerConnection {
+    id: string;
+    name: string;
+    status: 'connected' | 'disconnected' | 'connecting' | 'error';
+    lastConnected?: Date;
+    error?: string;
+    tools: MCPTool[];
+}
+
+export interface MCPResource {
+    uri: string;
+    name: string;
+    description?: string;
+    mimeType?: string;
+    serverId: string;
+    serverName: string;
 }

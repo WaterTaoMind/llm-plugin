@@ -30,6 +30,7 @@ main.js.map
 *.md
 !README.md
 !REFACTORING_GUIDE.md
+!docs/AGENTIC_INTEGRATION_GUIDE.md
 
 # Ignore lock files (optional - can be included for exact dependency versions)
 package-lock.json

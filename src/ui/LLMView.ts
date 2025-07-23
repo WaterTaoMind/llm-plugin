@@ -1,11 +1,13 @@
 import { ItemView, WorkspaceLeaf, Notice, MarkdownView } from 'obsidian';
 import { LLMPlugin } from '../core/LLMPlugin';
-import { ChatMessage, LLMRequest, RequestState } from '../core/types';
+import { ChatMessage, LLMRequest, RequestState, ProcessingMode } from '../core/types';
 import { LLMService } from '../services/LLMService';
 import { CommandService } from '../services/CommandService';
 import { ImageService } from '../services/ImageService';
 import { ChatHistory } from './components/ChatHistory';
 import { InputArea } from './components/InputArea';
+import { joinPath, normalizePath } from '../utils/pathUtils';
+import { AgentProgressEvent } from '../agents/types';
 
 export class LLMView extends ItemView {
     private plugin: LLMPlugin;
@@ -19,6 +21,8 @@ export class LLMView extends ItemView {
         error: null,
         lastRequest: null
     };
+    private currentProgressMessage?: HTMLElement;
+    private currentAbortController?: AbortController;
 
     constructor(leaf: WorkspaceLeaf, plugin: LLMPlugin) {
         super(leaf);
@@ -28,6 +32,13 @@ export class LLMView extends ItemView {
         this.llmService = new LLMService(plugin.settings);
         this.commandService = new CommandService(this.app, this.llmService);
         this.imageService = new ImageService(this.app);
+
+        // Connect MCP client service to LLM service and CommandService
+        const mcpClientService = plugin.getMCPClientService();
+        if (mcpClientService) {
+            this.llmService.setMCPClientService(mcpClientService);
+            this.commandService.setMCPClientService(mcpClientService);
+        }
     }
 
     getViewType(): string {
@@ -53,15 +64,30 @@ export class LLMView extends ItemView {
         const historyContainer = chatContainer.createDiv();
         this.chatHistory = new ChatHistory(historyContainer);
 
-        // Initialize input area
+        // Initialize input area (now includes mode selector)
         const inputContainer = chatContainer.createDiv();
-        this.inputArea = new InputArea(inputContainer);
+        // Get plugin directory path (normalize for cross-platform compatibility)
+        const basePath = (this.app.vault.adapter as any).basePath;
+        const pluginDir = joinPath(normalizePath(basePath), '.obsidian', 'plugins', this.plugin.manifest.id);
+        this.inputArea = new InputArea(inputContainer, this.app, pluginDir);
+
+        // Connect mode selector to LLM service
+        this.inputArea.setCurrentMode(this.llmService.getCurrentMode());
+        this.inputArea.onModeChange = (mode: ProcessingMode) => {
+            this.llmService.setCurrentMode(mode);
+        };
 
         // Setup event handlers
         this.setupEventHandlers();
 
         // Set available commands
         this.inputArea.setCommands(this.commandService.getCommands());
+
+        // Connect MCP client service to InputArea for status display
+        const mcpClientService = this.plugin.getMCPClientService();
+        if (mcpClientService) {
+            this.inputArea.setMCPClientService(mcpClientService);
+        }
 
         // Set default model if available
         if (this.plugin.settings.defaultModel) {
@@ -73,6 +99,11 @@ export class LLMView extends ItemView {
         // Handle send message
         this.inputArea.onSendMessage = async () => {
             await this.sendMessage();
+        };
+
+        // Handle cancel request
+        this.inputArea.onCancelRequest = () => {
+            this.cancelCurrentRequest();
         };
 
         // Handle conversation ID actions
@@ -129,15 +160,21 @@ export class LLMView extends ItemView {
         if (youtubeMatch) {
             try {
                 const url = youtubeMatch[1].trim();
-                const transcript = await this.llmService.getYouTubeTranscript(url);
+                const transcript = await this.llmService.getYouTubeTranscript(url, this.currentAbortController?.signal);
                 if (transcript) {
                     await this.processLLMRequest(transcript);
                     this.inputArea.setPromptValue('');
                 }
                 return;
             } catch (error) {
-                console.error('Failed to get YouTube transcript:', error);
-                new Notice('Failed to get YouTube transcript. Please check the URL and try again.');
+                if (error.name === 'AbortError') {
+                    console.log('YouTube transcript was cancelled by user');
+                    this.inputArea.showCancelled();
+                    new Notice('YouTube transcript cancelled');
+                } else {
+                    console.error('Failed to get YouTube transcript:', error);
+                    new Notice('Failed to get YouTube transcript. Please check the URL and try again.');
+                }
                 return;
             }
         }
@@ -216,7 +253,18 @@ export class LLMView extends ItemView {
         const images = this.inputArea.getImages();
 
         try {
+            // Create new AbortController for this request
+            this.currentAbortController = new AbortController();
+            
             this.setLoading(true);
+
+            // Set up progress callback for agent mode
+            const effectiveMode = this.llmService.getCurrentMode();
+            console.log('🔍 Mode check:', { effectiveMode, isAgent: effectiveMode === ProcessingMode.AGENT, hasAgentPrefix: prompt.startsWith('/agent') });
+            if (effectiveMode === ProcessingMode.AGENT || prompt.startsWith('/agent')) {
+                console.log('🚀 Setting up progress streaming for agent mode');
+                this.setupProgressStreaming(prompt);
+            }
 
             const options = conversationId ? ["-c", "--cid", conversationId] : [];
             const response = await this.llmService.sendRequest({
@@ -225,14 +273,21 @@ export class LLMView extends ItemView {
                 model,
                 options,
                 images,
-                conversationId
+                conversationId,
+                signal: this.currentAbortController.signal
             });
 
             if (response.error) {
                 throw new Error(response.error);
             }
 
-            this.appendToChatHistory(prompt, response.result);
+            // For agent mode, the response.result includes the formatted result
+            // For chat mode, just append normally
+            if (effectiveMode === ProcessingMode.AGENT || prompt.startsWith('/agent')) {
+                this.finalizeProgressStreaming(prompt, response.result, response.images);
+            } else {
+                this.appendToChatHistory(prompt, response.result, response.images);
+            }
 
             // Clear inputs (matching original behavior)
             this.inputArea.setPromptValue('');
@@ -244,10 +299,136 @@ export class LLMView extends ItemView {
             await this.imageService.cleanupScreenshots(screenshotPaths);
 
         } catch (error) {
-            console.error('Failed to get LLM response:', error);
-            new Notice('Failed to get LLM response. Please try again.');
+            if (error.name === 'AbortError') {
+                console.log('Request was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Request cancelled');
+            } else {
+                console.error('Failed to get LLM response:', error);
+                new Notice('Failed to get LLM response. Please try again.');
+            }
         } finally {
+            this.currentAbortController = undefined;
             this.setLoading(false);
+        }
+    }
+
+    /**
+     * Set up progress streaming for agent mode
+     */
+    private setupProgressStreaming(prompt: string) {
+        console.log('🚀 setupProgressStreaming called with prompt:', prompt.substring(0, 50) + '...');
+        
+        // Add the user message immediately
+        this.chatHistory.addMessage({
+            id: `user-${Date.now()}`,
+            type: 'user',
+            content: prompt,
+            timestamp: new Date()
+        });
+        console.log('✅ User message added to chat history');
+
+        // Create and add initial progress message
+        this.currentProgressMessage = this.chatHistory.addProgressMessage('🚀 **Agent Started**\nAnalyzing request and planning approach...\n\n');
+        console.log('✅ Progress message created:', !!this.currentProgressMessage);
+        
+
+        // Set up progress callback
+        this.llmService.setProgressCallback((event: AgentProgressEvent) => {
+            console.log('📝 Progress event received:', event.type, event.step);
+            this.handleProgressUpdate(event);
+        });
+        console.log('✅ Progress callback set on LLM service');
+    }
+
+    /**
+     * Handle progress updates during agent execution
+     */
+    private handleProgressUpdate(event: AgentProgressEvent) {
+        console.log('🔄 handleProgressUpdate called:', event.type, event.step, !!this.currentProgressMessage);
+        
+        if (!this.currentProgressMessage) {
+            console.error('❌ No currentProgressMessage found for progress update');
+            return;
+        }
+
+        let progressText = '';
+
+        switch (event.type) {
+            case 'step_start':
+                progressText += `🤔 **Step ${event.step}${event.data.progress ? ` - ${event.data.progress}` : ''}**\n`;
+                progressText += `${event.data.description}\n\n`;
+                break;
+            
+            case 'reasoning_complete':
+                progressText += `💭 **Reasoning**: ${event.data.reasoning}\n`;
+                progressText += `📊 **Goal Status**: ${event.data.goalStatus}\n`;
+                progressText += `🎯 **Decision**: ${event.data.decision}\n`;
+                if (event.data.nextAction !== 'None') {
+                    progressText += `🛠️ **Next Action**: ${event.data.nextAction}\n`;
+                }
+                progressText += '\n';
+                break;
+            
+            case 'action_start':
+                progressText += `🔧 **Executing**: ${event.data.tool} (${event.data.server})\n`;
+                progressText += `📝 **Purpose**: ${event.data.justification}\n\n`;
+                break;
+            
+            case 'action_complete':
+                const status = event.data.success ? '✅' : '❌';
+                progressText += `${status} **${event.data.tool}** - `;
+                if (event.data.result.length > 100) {
+                    progressText += `${event.data.result.substring(0, 100)}...\n`;
+                    progressText += `<details><summary>📄 Full Result (${event.data.result.length} chars)</summary>\n\n${event.data.result}\n</details>\n\n`;
+                } else {
+                    progressText += `${event.data.result}\n\n`;
+                }
+                break;
+        }
+
+        console.log('📝 Progress text generated:', progressText.length > 0 ? progressText.substring(0, 100) + '...' : '(empty)');
+
+        if (progressText) {
+            this.updateProgress(progressText);
+        } else {
+            console.log('⚠️ No progress text generated for event type:', event.type);
+        }
+    }
+
+    /**
+     * Update progress message immediately
+     */
+    private updateProgress(progressText: string) {
+        // Ensure the progress message element still exists and is visible
+        if (!this.currentProgressMessage || !this.currentProgressMessage.isConnected) {
+            console.log('⚠️ Progress message element not found or disconnected from DOM');
+            return;
+        }
+
+        try {
+            this.chatHistory.appendToProgressMessage(this.currentProgressMessage!, progressText);
+        } catch (error) {
+            console.error('❌ Failed to update progress message:', error);
+        }
+    }
+
+    /**
+     * Finalize progress streaming with final result
+     */
+    private finalizeProgressStreaming(prompt: string, result: string, images?: string[]) {
+        if (this.currentProgressMessage) {
+            // Add completion indicator only (final result will be in dedicated section)
+            const completionText = `\n---\n\n✅ **Task Completed Successfully**`;
+            this.chatHistory.appendToProgressMessage(this.currentProgressMessage, completionText);
+            
+            // Add integrated action buttons to the progress message
+            this.chatHistory.addProgressMessageActions(this.currentProgressMessage, result, images);
+            
+            this.currentProgressMessage = undefined;
+        } else {
+            // Fallback to normal chat history
+            this.appendToChatHistory(prompt, result, images);
         }
     }
 
@@ -392,32 +573,54 @@ export class LLMView extends ItemView {
 
     private async performTavilySearch(query: string) {
         try {
-            const results = await this.llmService.performTavilySearch(query);
+            const results = await this.llmService.performTavilySearch(query, this.currentAbortController?.signal);
             const searchResult = JSON.stringify(results, null, 2);
 
             // Display search query and results in chat
             this.appendToChatHistory(`@tavily ${query}`, searchResult);
             this.inputArea.setPromptValue('');
         } catch (error) {
-            console.error('Failed to perform Tavily search:', error);
-            new Notice('Failed to perform Tavily search. Please check your API key and try again.');
+            if (error.name === 'AbortError') {
+                console.log('Tavily search was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Tavily search cancelled');
+            } else {
+                console.error('Failed to perform Tavily search:', error);
+                new Notice('Failed to perform Tavily search. Please check your API key and try again.');
+            }
         }
     }
 
     private async performWebScrape(url: string) {
         try {
-            const content = await this.llmService.scrapeWebContent(url);
+            const content = await this.llmService.scrapeWebContent(url, this.currentAbortController?.signal);
 
             // Instead of just displaying content, send it to LLM
             await this.processLLMRequest(content);
             this.inputArea.setPromptValue('');
         } catch (error) {
-            console.error('Failed to scrape web content:', error);
-            new Notice('Failed to scrape web content. Please check the URL and try again.');
+            if (error.name === 'AbortError') {
+                console.log('Web scrape was cancelled by user');
+                this.inputArea.showCancelled();
+                new Notice('Web scrape cancelled');
+            } else {
+                console.error('Failed to scrape web content:', error);
+                new Notice('Failed to scrape web content. Please check the URL and try again.');
+            }
         }
     }
 
-    private appendToChatHistory(prompt: string, response: string) {
+    /**
+     * Cancel the current request
+     */
+    private cancelCurrentRequest() {
+        if (this.currentAbortController) {
+            console.log('Cancelling current request...');
+            this.currentAbortController.abort();
+        }
+    }
+
+    private appendToChatHistory(prompt: string, response: string, images?: string[]) {
         // Add user message
         const userMessage: ChatMessage = {
             id: Date.now().toString(),
@@ -431,7 +634,8 @@ export class LLMView extends ItemView {
             id: (Date.now() + 1).toString(),
             type: 'assistant',
             content: response,
-            timestamp: new Date()
+            timestamp: new Date(),
+            images: images
         };
 
         this.chatHistory.addMessage(userMessage, (content) => content);

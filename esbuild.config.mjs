@@ -30,6 +30,7 @@ esbuild.build({
     },
     entryPoints: ["main.ts"], // Now using the refactored main.ts
     bundle: true,
+    platform: "node", // Add platform for Node.js modules
     plugins: [aliasPlugin],
     external: [
         "obsidian",
@@ -45,6 +46,13 @@ esbuild.build({
         "@lezer/common",
         "@lezer/highlight",
         "@lezer/lr",
+        // Node.js built-in modules
+        "node:process",
+        "node:stream",
+        "node:crypto",
+        "node:path",
+        "node:fs",
+        "node:util",
         ...builtins],
     format: "cjs",
     target: "es2018",

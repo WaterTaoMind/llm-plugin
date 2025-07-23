@@ -36,6 +36,14 @@ The LLM Integration Plugin transforms Obsidian into an AI-powered knowledge work
 - **Custom Patterns**: Create and manage reusable AI processing templates
 - **Image Analysis**: Upload and analyze images with AI vision models
 
+### 🔗 **Model Context Protocol (MCP) Integration**
+- **Intelligent Tool Selection**: AI automatically chooses and executes appropriate tools based on your requests
+- **Multi-Server Support**: Connect to multiple MCP servers simultaneously
+- **Real-Time Status**: Monitor server connections and available tools
+- **Resource Access**: Seamlessly access files, databases, and external services
+- **Auto-Reconnection**: Robust connection management with exponential backoff
+- **Manual Override**: Use @-commands for direct tool execution when needed
+
 ### ⚙️ **Advanced Capabilities**
 - **Custom Model Selection**: Choose from different AI models for specific tasks
 - **Batch Processing**: Handle multiple files or content pieces efficiently
@@ -146,6 +154,81 @@ src/
 - **🛡️ Type Safety**: Full TypeScript coverage prevents runtime errors
 - **🧪 Testable**: Services can be unit tested independently
 
+## 🔗 Model Context Protocol (MCP) Integration
+
+The plugin includes comprehensive support for the Model Context Protocol, enabling seamless integration with external tools and services.
+
+### **What is MCP?**
+
+Model Context Protocol (MCP) is an open standard that allows AI assistants to securely connect to external data sources and tools. With MCP, your AI can:
+- Access local files and databases
+- Execute system commands
+- Connect to APIs and web services
+- Interact with development tools
+- And much more!
+
+### **How It Works**
+
+1. **Automatic Tool Selection**: When you make a request, the AI automatically analyzes available MCP tools and selects the most appropriate ones
+2. **Seamless Execution**: Tools are executed transparently in the background
+3. **Intelligent Results**: Tool outputs are incorporated into the AI's response naturally
+
+### **Example Interactions**
+
+```
+You: "Create a GitHub issue for the login bug we discussed"
+AI: [Automatically uses GitHub MCP server to create issue]
+Response: "I've created GitHub issue #123 'Fix login bug' in your repository."
+
+You: "What's in my project's README file?"
+AI: [Automatically uses filesystem MCP server to read file]
+Response: "Here's the content of your README.md file: [file contents]"
+
+You: "Search for recent papers on machine learning"
+AI: [Automatically uses web search MCP server]
+Response: "I found several recent papers: [search results with summaries]"
+```
+
+### **Setting Up MCP Servers**
+
+1. **Open Plugin Settings**: Go to Settings → Community Plugins → LLM Plugin
+2. **Enable MCP**: Toggle "Enable MCP" in the MCP Settings section
+3. **Add Servers**: Click "Add MCP Server" and configure:
+   - **Name**: Descriptive name for the server
+   - **Command**: Executable command (e.g., `npx`, `python`, `node`)
+   - **Arguments**: Command arguments and server path
+   - **Environment**: API keys and other environment variables
+
+### **Popular MCP Servers**
+
+| Server | Description | Setup Command |
+|--------|-------------|---------------|
+| **Filesystem** | Access local files and directories | `npm install -g @modelcontextprotocol/server-filesystem` |
+| **Git** | Git repository operations | `npm install -g @modelcontextprotocol/server-git` |
+| **GitHub** | GitHub API integration | `npm install -g @modelcontextprotocol/server-github` |
+| **SQLite** | SQLite database access | `npm install -g @modelcontextprotocol/server-sqlite` |
+| **Web Search** | Brave search integration | `npm install -g @modelcontextprotocol/server-brave-search` |
+| **Puppeteer** | Web scraping and automation | `npm install -g @modelcontextprotocol/server-puppeteer` |
+
+### **Configuration Examples**
+
+See `mcp-server-examples.json` for detailed configuration examples and `test-mcp-integration.md` for testing instructions.
+
+### **Manual Tool Commands**
+
+While the AI automatically selects tools, you can also invoke them manually:
+
+- `@toolname arguments` - Execute a specific tool
+- `@server:toolname arguments` - Execute tool from specific server
+- `@resource uri` - Access a specific resource
+
+### **Monitoring and Management**
+
+- **Status Indicator**: The MCP status pill shows connection status (e.g., "MCP: 2/3")
+- **Real-Time Updates**: Server status updates automatically in settings
+- **Reconnection**: Failed connections automatically retry with exponential backoff
+- **Manual Reconnect**: Use the "Reconnect" button in settings for immediate retry
+
 ## � Troubleshooting
 
 ### **Debug Mode**
@@ -160,6 +243,26 @@ Enable debug mode in plugin settings for detailed logging:
 - **Performance**: Check console for service bottlenecks
 - **File Processing**: Ensure proper folder permissions
 - **Pattern Sync**: Validate markdown file formats
+
+### **MCP Troubleshooting**
+- **Server Won't Connect**:
+  - Check command path and arguments are correct
+  - Verify server dependencies are installed
+  - Ensure executable permissions are set
+  - Check console logs for detailed error messages
+- **Tools Not Working**:
+  - Verify server is connected (check status pill)
+  - Try manual reconnection in settings
+  - Check tool arguments format
+  - Ensure required API keys are configured
+- **Automatic Tool Selection Issues**:
+  - Verify LLM backend supports function calling
+  - Check that tools are properly discovered
+  - Try using manual @-commands as fallback
+- **Performance Issues**:
+  - Adjust tool timeout settings
+  - Check for server resource constraints
+  - Monitor connection health in settings
 
 ## 🤝 Contributing
 

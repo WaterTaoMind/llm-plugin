@@ -4,18 +4,32 @@ import { LLMView } from '../ui/LLMView';
 import { LLMSettingTab } from '../ui/SettingsTab';
 import { MarkdownProcessor } from '../utils/markdown';
 import { StyleManager } from '../ui/styles/StyleManager';
+import { MCPClientService } from '../services/MCPClientService';
 
 export class LLMPlugin extends Plugin {
     settings: LLMPluginSettings;
     private markdownProcessor: MarkdownProcessor;
     private styleManager: StyleManager;
+    mcpClientService: MCPClientService; // Made public for settings access
 
     async onload() {
         await this.loadSettings();
 
+        // Set MCP timeout environment variable for long-running operations
+        process.env.MCP_TIMEOUT = '1800000'; // 30 minutes
+
         // Initialize core services
         this.markdownProcessor = new MarkdownProcessor();
         this.styleManager = new StyleManager();
+        this.mcpClientService = new MCPClientService(this.settings, this.app);
+
+        // Initialize MCP client
+        try {
+            await this.mcpClientService.initialize();
+        } catch (error) {
+            console.error('Failed to initialize MCP client:', error);
+            new Notice('Failed to initialize MCP client. Check console for details.', 5000);
+        }
 
         // Setup UI components
         this.setupUI();
@@ -29,6 +43,12 @@ export class LLMPlugin extends Plugin {
 
     async onunload() {
         console.log('Unloading LLM plugin');
+
+        // Cleanup MCP client
+        if (this.mcpClientService) {
+            await this.mcpClientService.cleanup();
+        }
+
         this.styleManager.removeStyles();
     }
 
@@ -164,10 +184,19 @@ export class LLMPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+
+        // Update MCP client settings
+        if (this.mcpClientService) {
+            this.mcpClientService.updateSettings(this.settings);
+        }
     }
 
     public renderMarkdown(content: string): string {
         return this.markdownProcessor.render(content);
+    }
+
+    public getMCPClientService(): MCPClientService {
+        return this.mcpClientService;
     }
 
     private initLeaf(): void {

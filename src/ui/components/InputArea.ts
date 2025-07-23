@@ -1,17 +1,58 @@
-import { Notice } from 'obsidian';
-import { Command } from '../../core/types';
-import { SendIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
+import { Notice, App } from 'obsidian';
+import { Command, MCPServerConnection, ProcessingMode } from '../../core/types';
+import { SendIcon, StopIcon, PlusIcon, GetCidIcon } from '../../constants/icons';
+import { joinPath, normalizePath, hasImageExtension } from '../../utils/pathUtils';
+import { MCPClientService } from '../../services/MCPClientService';
+
+interface ConfigData {
+    models: Array<{id: string, label: string}>;
+    templates: Array<{id: string, label: string}>;
+    agentModels?: Array<{id: string, label: string}>;
+    agentModelConfig?: {
+        configType: 'single' | 'dual';
+        singleModel: string;
+        dualModel: {
+            reasoningModel: string;
+            processingModel: string;
+        };
+    };
+    defaultModel?: string;
+}
 
 export class InputArea {
     public container: HTMLElement;
-    private conversationIdInput: HTMLInputElement;
-    private modelInput: HTMLInputElement;
-    private patternInput: HTMLInputElement;
+    private app: App;
+    private pluginDir: string;
+    private unifiedInputContainer: HTMLElement;
     private promptInput: HTMLTextAreaElement;
     private sendButton: HTMLButtonElement;
+    private modelSelector: HTMLSelectElement;
+    private modeSelector: HTMLElement;
+
+    // Pills
+    private toolsPill: HTMLButtonElement;
+    private attachmentsPill: HTMLButtonElement;
+    private cidPill: HTMLButtonElement;
+    private templatePill: HTMLButtonElement;
+    private mcpStatusPill: HTMLButtonElement;
+
+    // Popups and dropdowns
     private dropdown: HTMLElement | null = null;
+    private cidPopup: HTMLElement | null = null;
+    private attachmentsPopup: HTMLElement | null = null;
+    private templatePopup: HTMLElement | null = null;
+    private mcpStatusPopup: HTMLElement | null = null;
+
+    // Data
     private commands: Command[] = [];
-    private attachedImages: string[] = []; // For drag-dropped images
+    private attachedImages: string[] = [];
+    private configData: ConfigData | null = null;
+    private conversationId: string = '';
+    private selectedTemplate: string = '';
+
+    // Legacy elements for compatibility
+    private conversationIdInput: HTMLInputElement;
+    private patternInput: HTMLInputElement;
     private imagePreviewContainer: HTMLElement;
     private imagePathInput: HTMLInputElement;
     private addImageButton: HTMLButtonElement;
@@ -19,85 +60,516 @@ export class InputArea {
 
     // Event handlers
     public onSendMessage: () => void = () => {};
-
+    public onCancelRequest: () => void = () => {};
     public onGetConversationId: () => void = () => {};
     public onClearConversationId: () => void = () => {};
+    public onModeChange: (mode: ProcessingMode) => void = () => {};
 
-    constructor(container: HTMLElement) {
+    // Mode selector state
+    private currentMode: ProcessingMode = ProcessingMode.CHAT;
+
+    // Button state management
+    private isProcessing: boolean = false;
+    private statusText: HTMLElement | null = null;
+
+    // MCP integration
+    private mcpClientService?: MCPClientService;
+
+    constructor(container: HTMLElement, app: App, pluginDir: string) {
         this.container = container;
-        this.createInputInterface();
+        this.app = app;
+        this.pluginDir = pluginDir;
+        this.loadConfiguration().then(() => {
+            this.createUnifiedInputInterface();
+        });
     }
 
-    private createInputInterface() {
-        // Conversation ID section
-        const cidContainer = this.container.createDiv({ cls: 'llm-cid-container' });
+    public async reloadConfiguration() {
+        console.log('🔄 Manually reloading configuration...');
+        await this.loadConfiguration();
+        this.updateDropdowns();
+        console.log('🔄 Configuration reload complete');
+    }
 
-        const getCidButton = cidContainer.createEl('button', { cls: 'llm-get-cid-button' });
-        getCidButton.innerHTML = GetCidIcon;
-        getCidButton.addEventListener('click', () => this.onGetConversationId());
+    public debugConfiguration() {
+        console.log('🐛 Debug Configuration:');
+        console.log('🐛 Plugin Dir:', this.pluginDir);
+        console.log('🐛 Config Data:', this.configData);
+        console.log('🐛 Model Selector:', this.modelSelector);
+        console.log('🐛 Selected Template:', this.selectedTemplate);
+    }
 
-        this.conversationIdInput = cidContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Conversation ID (optional)',
-            cls: 'llm-conversation-id-input'
+    private updateDropdowns() {
+        // Update model dropdown
+        if (this.modelSelector && this.configData?.models) {
+            this.modelSelector.empty();
+            this.configData.models.forEach(model => {
+                this.modelSelector!.createEl('option', {
+                    value: model.id,
+                    text: model.label
+                });
+            });
+        }
+    }
+
+    private async loadConfiguration() {
+        try {
+            // Primary: Try to load from data.json file first
+            // Use Node.js fs module for direct file access (cross-platform)
+            const configPath = joinPath(this.pluginDir, 'data.json');
+            console.log(`🔍 Attempting to load config from: ${configPath}`);
+            console.log(`🔍 Plugin directory: ${this.pluginDir}`);
+
+            // Try to read the file directly using Node.js fs
+            try {
+                const fs = require('fs');
+                let configContent = fs.readFileSync(configPath, 'utf8');
+                console.log(`🔍 Raw config content length: ${configContent.length}`);
+
+                let fileConfig = JSON.parse(configContent);
+                console.log(`🔍 Parsed config:`, fileConfig);
+
+                // Auto-migrate: Add agent models if missing
+                if (!fileConfig.agentModels) {
+                    fileConfig.agentModels = [
+                        { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
+                        { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
+                        { id: 'g25f', label: 'Gemini-2.5-Flash' },
+                        { id: 'g25p', label: 'Gemini-2.5-Pro' },
+                        { id: 'k2', label: 'Kimi-K2-Preview' }
+                    ];
+                    console.log('📋 Added default agent models with k2');
+                }
+
+                // Auto-migrate: Add agent config if missing
+                if (!fileConfig.agentModelConfig) {
+                    fileConfig.agentModelConfig = {
+                        configType: 'single',
+                        singleModel: fileConfig.defaultModel || 'g25fp',
+                        dualModel: {
+                            reasoningModel: 'g25fp',
+                            processingModel: 'g25p'
+                        }
+                    };
+                    console.log('📋 Added default agent model config');
+                }
+
+                // Save updated config back to file
+                fs.writeFileSync(configPath, JSON.stringify(fileConfig, null, 2));
+
+                // Extract models and templates from file config
+                if (fileConfig.models && fileConfig.templates) {
+                    this.configData = {
+                        models: fileConfig.models,
+                        templates: fileConfig.templates,
+                        agentModels: fileConfig.agentModels,
+                        agentModelConfig: fileConfig.agentModelConfig,
+                        defaultModel: fileConfig.defaultModel
+                    };
+                    console.log('✅ Successfully loaded config from data.json:');
+                    console.log('📋 Models:', this.configData.models);
+                    console.log('📋 Agent Models:', this.configData.agentModels);
+                    console.log('📋 Agent Config:', this.configData.agentModelConfig);
+                    console.log('📋 Templates:', this.configData.templates);
+                    return; // Success - exit early
+                } else {
+                    console.warn('⚠️ data.json exists but missing models/templates structure');
+                    console.warn('⚠️ Available keys:', Object.keys(fileConfig));
+                }
+            } catch (fileError) {
+                console.warn('⚠️ Failed to read data.json file:', fileError.message);
+                console.warn('⚠️ File path attempted:', configPath);
+            }
+
+            // Fallback: Use hardcoded configuration if file loading fails
+            console.log('📋 Using fallback configuration');
+            this.configData = {
+                models: [
+                    { id: 'g25fp', label: 'Gemini 2.5 Flash Pro' },
+                    { id: 'gpt-4o', label: 'GPT-4 Omni' },
+                    { id: 'gpt-4.1', label: 'GPT-4.1' },
+                    { id: 'sv3', label: 'DeepSeek-V3-0324' },
+                    { id: 'sr1', label: 'DeepSeek-R1-0528' }
+                ],
+                agentModels: [
+                    { id: 'g25fp', label: 'Gemini-2.5-Flash Preview' },
+                    { id: 'g25fl', label: 'G2.5 Flash Lite Preview' },
+                    { id: 'g25f', label: 'Gemini-2.5-Flash' },
+                    { id: 'g25p', label: 'Gemini-2.5-Pro' },
+                    { id: 'k2', label: 'Kimi-K2-Preview' }
+                ],
+                agentModelConfig: {
+                    configType: 'single',
+                    singleModel: 'g25fp',
+                    dualModel: {
+                        reasoningModel: 'g25fp',
+                        processingModel: 'g25p'
+                    }
+                },
+                defaultModel: 'g25fp',
+                templates: [
+                    { id: 'summary', label: '文档总结' },
+                    { id: 'en2zh', label: '英译中' },
+                    { id: 'svg_vis', label: 'SVG可视化' },
+                    { id: 'ch_condense', label: '要点提炼' },
+                    { id: 'MindMap', label: '思维导图' },
+                    { id: 'VisArg', label: '结构可视化' },
+                    { id: 'MathFlowchart', label: '数学流程图' },
+                    { id: 'zh2en', label: '中译英' }
+                ]
+            };
+
+        } catch (error) {
+            console.error('❌ Configuration loading failed:', error);
+
+            // Minimal fallback for critical errors
+            this.configData = {
+                models: [
+                    { id: 'gpt-4o', label: 'GPT-4 Omni' },
+                    { id: 'custom', label: 'Custom' }
+                ],
+                templates: [
+                    { id: 'summary', label: '文档总结' }
+                ]
+            };
+        }
+    }
+
+    private createUnifiedInputInterface() {
+        // Create the main unified input container
+        this.unifiedInputContainer = this.container.createDiv({ cls: 'llm-unified-input-container' });
+
+        // Create pills row (top-left)
+        this.createFunctionPills();
+
+        // Create main input area (center)
+        this.createMainTextArea();
+
+        // Create controls row (bottom-right)
+        this.createControlsRow();
+
+        // Create hidden legacy elements for compatibility
+        this.createLegacyElements();
+
+        // Image preview section (integrated within unified container)
+        this.imagePreviewContainer = this.unifiedInputContainer.createDiv({ cls: 'llm-image-previews' });
+
+        // Setup event handlers
+        this.setupEventHandlers();
+    }
+
+    private createFunctionPills() {
+        const pillsContainer = this.unifiedInputContainer.createDiv({ cls: 'llm-function-pills-container' });
+
+        // CID pill (first - conversation context)
+        this.cidPill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill',
+            text: 'CID'
         });
 
-        const clearCidButton = cidContainer.createEl('button', { cls: 'llm-clear-cid-button' });
-        clearCidButton.innerHTML = 'Clear';
-        clearCidButton.addEventListener('click', () => this.onClearConversationId());
-
-        // Model and pattern inputs
-        const modelTemplateContainer = this.container.createDiv({ cls: 'llm-model-template-container' });
-
-        this.modelInput = modelTemplateContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter model name',
-            cls: 'llm-model-input'
+        // Tools pill (second - actions/commands)
+        this.toolsPill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill',
+            text: '工具'
         });
 
-        this.patternInput = modelTemplateContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter LLM template',
-            cls: 'llm-pattern-input'
+        // Attachments pill (third - supporting materials)
+        this.attachmentsPill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill',
+            text: '附件'
         });
 
-        // Image path input section (manual entry)
-        this.imageInputContainer = this.container.createDiv({ cls: 'llm-image-input-container' });
-        this.imagePathInput = this.imageInputContainer.createEl('input', {
-            type: 'text',
-            placeholder: 'Enter document path',
-            cls: 'llm-image-input'
-        });
-        this.addImageButton = this.imageInputContainer.createEl('button', {
-            cls: 'llm-add-image-button'
-        });
-        this.addImageButton.innerHTML = PlusIcon;
-        this.addImageButton.addEventListener('click', () => this.addImageInput());
-
-        // Setup image path input handlers
-        this.setupImagePathInputHandlers();
-
-        // Image preview section
-        this.imagePreviewContainer = this.container.createDiv({ cls: 'llm-image-previews' });
-
-        // Prompt input section
-        const promptInputContainer = this.container.createDiv({ cls: 'llm-prompt-input-container' });
-
-        this.promptInput = promptInputContainer.createEl('textarea', {
-            placeholder: 'Type your message here... (drop screenshots here)',
-            cls: 'llm-prompt-input'
+        // Template pill (fourth - processing/formatting)
+        this.templatePill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill',
+            text: '模板'
         });
 
-        // Setup prompt input event handlers
-        this.setupPromptInputHandlers();
+        // MCP Status pill (fifth - MCP server status)
+        this.mcpStatusPill = pillsContainer.createEl('button', {
+            cls: 'llm-function-pill mcp-status-pill',
+            text: 'MCP: 0/0'
+        });
+        this.mcpStatusPill.style.display = 'none'; // Hidden by default
 
-        this.sendButton = promptInputContainer.createEl('button', { cls: 'llm-send-button' });
+        // Add visual indicators
+        this.updateCidPillState();
+        this.updateTemplatePillState();
+        this.updateMCPStatusPill();
+    }
+
+    private createMainTextArea() {
+        const textAreaContainer = this.unifiedInputContainer.createDiv({ cls: 'llm-textarea-container' });
+
+        this.promptInput = textAreaContainer.createEl('textarea', {
+            placeholder: 'Type your message here... (Ctrl+Enter for submit)',
+            cls: 'llm-unified-prompt-input'
+        });
+
+        // Auto-resize functionality
+        this.promptInput.style.height = 'auto';
+        this.promptInput.style.minHeight = '20px';
+        this.promptInput.style.maxHeight = '120px';
+    }
+
+    private createControlsRow() {
+        const controlsContainer = this.unifiedInputContainer.createDiv({ cls: 'llm-controls-container' });
+
+        // Mode selector (compact toggle)
+        this.createModeSelector(controlsContainer);
+
+        // Model selector
+        this.modelSelector = controlsContainer.createEl('select', { cls: 'llm-model-selector' });
+        
+        // Populate model selector after it's created
+        this.populateModelSelector();
+
+        // Send button with tooltip support
+        this.sendButton = controlsContainer.createEl('button', { 
+            cls: 'llm-unified-send-button',
+            attr: { 'data-tooltip': 'Submit' }
+        });
         this.sendButton.innerHTML = SendIcon;
-        this.sendButton.addEventListener('click', () => this.handleSendMessage());
+        
+        // Status text below button
+        this.statusText = this.unifiedInputContainer.createDiv({ cls: 'llm-status-text' });
+        this.statusText.style.display = 'none';
     }
 
-    private setupPromptInputHandlers() {
-        // Command autocomplete
+    private populateModelSelector() {
+        if (!this.configData) return;
+        
+        // Guard against undefined modelSelector during initialization
+        if (!this.modelSelector) {
+            console.log('⚠️ ModelSelector not initialized yet, skipping population');
+            return;
+        }
+
+        // Clear existing options
+        this.modelSelector.innerHTML = '';
+
+        // Get current mode from mode selector
+        const currentMode = this.getCurrentModeString();
+        
+        if (currentMode === 'chat') {
+            this.populateChatModeModels();
+        } else {
+            this.populateAgentModeModels();
+        }
+    }
+
+    private getCurrentModeString(): string {
+        // Use the existing currentMode property and convert to string
+        return this.currentMode === ProcessingMode.CHAT ? 'chat' : 'agent';
+    }
+
+    private populateChatModeModels() {
+        if (!this.configData?.models) return;
+
+        // Use full model list for chat mode
+        this.configData.models.forEach(model => {
+            const option = this.modelSelector.createEl('option');
+            option.value = model.id;
+            option.textContent = model.label;
+        });
+
+        // Add custom option
+        const customOption = this.modelSelector.createEl('option');
+        customOption.value = 'custom';
+        customOption.textContent = 'Custom';
+
+        // Set to default model
+        this.modelSelector.value = this.configData.defaultModel || this.configData.models[0]?.id || 'custom';
+    }
+
+    private populateAgentModeModels() {
+        if (!this.configData?.agentModels) return;
+
+        const agentConfig = this.configData.agentModelConfig;
+        
+        if (agentConfig?.configType === 'dual') {
+            // Create dual model display
+            this.createDualModelDisplay();
+        } else {
+            // Single model - show agent model list
+            this.configData.agentModels.forEach(model => {
+                const option = this.modelSelector.createEl('option');
+                option.value = model.id;
+                option.textContent = model.label;
+            });
+            
+            // Set to configured single model
+            this.modelSelector.value = agentConfig?.singleModel || this.configData.agentModels[0]?.id || 'g25fp';
+        }
+    }
+
+    private createDualModelDisplay() {
+        const agentConfig = this.configData?.agentModelConfig;
+        const reasoningModel = agentConfig?.dualModel?.reasoningModel || 'g25fp';
+        const processingModel = agentConfig?.dualModel?.processingModel || 'g25p';
+        
+        // Create reasoning model option
+        const reasoningOption = this.modelSelector.createEl('option');
+        reasoningOption.value = reasoningModel;
+        reasoningOption.textContent = `🧠 ${this.getModelLabel(reasoningModel)}`;
+        
+        // Create processing model option (if different)
+        if (processingModel !== reasoningModel) {
+            const processingOption = this.modelSelector.createEl('option');
+            processingOption.value = processingModel;
+            processingOption.textContent = `⚙️ ${this.getModelLabel(processingModel)}`;
+        }
+        
+        // Set to reasoning model by default
+        this.modelSelector.value = reasoningModel;
+    }
+
+    private getModelLabel(modelId: string): string {
+        const model = this.configData?.agentModels?.find(m => m.id === modelId);
+        return model?.label || modelId;
+    }
+
+    private createModeSelector(container: HTMLElement) {
+        // Create dropdown-style mode selector container
+        this.modeSelector = container.createDiv({ cls: 'llm-mode-selector' });
+        
+        // Create main button that shows current selection
+        const mainButton = this.modeSelector.createEl('button', { 
+            cls: 'llm-mode-current',
+            attr: { 'aria-expanded': 'false' }
+        });
+        
+        const currentIcon = mainButton.createDiv({ cls: 'llm-mode-icon' });
+        const currentLabel = mainButton.createDiv({ cls: 'llm-mode-label' });
+        const dropdownArrow = mainButton.createDiv({ cls: 'llm-mode-arrow' });
+        dropdownArrow.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6,9 12,15 18,9"></polyline>
+        </svg>`;
+        
+        // Create dropdown options container
+        const dropdown = this.modeSelector.createDiv({ cls: 'llm-mode-dropdown' });
+        dropdown.style.display = 'none';
+        
+        // Create Chat mode option
+        const chatOption = dropdown.createEl('button', { 
+            cls: 'llm-mode-option',
+            attr: { 'data-mode': ProcessingMode.CHAT }
+        });
+        const chatIcon = chatOption.createDiv({ cls: 'llm-mode-icon' });
+        chatIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>`;
+        chatOption.createDiv({ cls: 'llm-mode-label', text: 'Chat' });
+        
+        // Create Agent mode option
+        const agentOption = dropdown.createEl('button', { 
+            cls: 'llm-mode-option',
+            attr: { 'data-mode': ProcessingMode.AGENT }
+        });
+        const agentIcon = agentOption.createDiv({ cls: 'llm-mode-icon' });
+        agentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+        </svg>`;
+        agentOption.createDiv({ cls: 'llm-mode-label', text: 'Agent' });
+        
+        // Set initial state
+        this.updateModeSelector();
+        
+        // Add event listeners
+        mainButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleDropdown();
+        });
+        
+        chatOption.addEventListener('click', () => {
+            this.setMode(ProcessingMode.CHAT);
+            this.closeDropdown();
+        });
+        
+        agentOption.addEventListener('click', () => {
+            this.setMode(ProcessingMode.AGENT);
+            this.closeDropdown();
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            this.closeDropdown();
+        });
+    }
+
+    private updateModeSelector() {
+        if (!this.modeSelector) return; // Guard against undefined modeSelector
+        
+        const currentButton = this.modeSelector.querySelector('.llm-mode-current');
+        const currentIcon = currentButton?.querySelector('.llm-mode-icon');
+        const currentLabel = currentButton?.querySelector('.llm-mode-label');
+        
+        if (currentIcon && currentLabel) {
+            if (this.currentMode === ProcessingMode.CHAT) {
+                currentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>`;
+                currentLabel.textContent = 'Chat';
+            } else {
+                currentIcon.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+                </svg>`;
+                currentLabel.textContent = 'Agent';
+            }
+        }
+    }
+
+    private toggleDropdown() {
+        const dropdown = this.modeSelector?.querySelector('.llm-mode-dropdown') as HTMLElement;
+        const mainButton = this.modeSelector?.querySelector('.llm-mode-current');
+        
+        if (dropdown && mainButton) {
+            const isOpen = dropdown.style.display !== 'none';
+            if (isOpen) {
+                this.closeDropdown();
+            } else {
+                dropdown.style.display = 'block';
+                mainButton.setAttribute('aria-expanded', 'true');
+            }
+        }
+    }
+
+    private closeDropdown() {
+        const dropdown = this.modeSelector?.querySelector('.llm-mode-dropdown') as HTMLElement;
+        const mainButton = this.modeSelector?.querySelector('.llm-mode-current');
+        
+        if (dropdown && mainButton) {
+            dropdown.style.display = 'none';
+            mainButton.setAttribute('aria-expanded', 'false');
+        }
+    }
+
+    private setMode(mode: ProcessingMode) {
+        if (mode === this.currentMode) return;
+        
+        this.currentMode = mode;
+        this.updateModeSelector();
+        
+        // Refresh model selector when mode changes (only if UI is initialized)
+        if (this.modelSelector) {
+            this.populateModelSelector();
+        }
+        
+        this.onModeChange(mode);
+    }
+
+    public getCurrentMode(): ProcessingMode {
+        return this.currentMode;
+    }
+
+    public setCurrentMode(mode: ProcessingMode) {
+        this.setMode(mode);
+    }
+
+    private setupEventHandlers() {
+        // Prompt input handlers
         this.promptInput.addEventListener('input', (e) => this.handlePromptInput(e as InputEvent));
         this.promptInput.addEventListener('keydown', (e) => this.handlePromptKeydown(e));
 
@@ -119,42 +591,273 @@ export class InputArea {
                 this.handleDroppedFiles(e.dataTransfer.files);
             }
         });
+
+        // Pill click handlers
+        this.toolsPill.addEventListener('click', () => this.showToolsMenu());
+        this.templatePill.addEventListener('click', () => this.showTemplateMenu());
+        this.attachmentsPill.addEventListener('click', () => this.showAttachmentsMenu());
+        this.cidPill.addEventListener('click', () => this.showCidMenu());
+
+        // Send button
+        this.sendButton.addEventListener('click', () => this.handleSendMessage());
+
+        // Model selector change
+        this.modelSelector.addEventListener('change', () => this.handleModelChange());
     }
 
-    private setupImagePathInputHandlers() {
-        // Handle input validation and styling
-        this.imagePathInput.addEventListener('input', () => {
-            this.updateAddImageButtonVisibility();
-            this.validateImagePath(this.imagePathInput);
+    private showToolsMenu() {
+        // Show existing command dropdown
+        this.showCommandDropdown();
+    }
+
+    private showTemplateMenu() {
+        if (this.templatePopup) {
+            this.hideTemplateMenu();
+            return;
+        }
+
+        this.templatePopup = document.createElement('div');
+        this.templatePopup.className = 'llm-template-popup';
+
+        // Add template options (excluding "No Template" and "Custom")
+        if (this.configData?.templates) {
+            this.configData.templates.forEach(template => {
+                const templateBtn = this.templatePopup!.createEl('button', {
+                    cls: 'llm-popup-option',
+                    text: template.label
+                });
+                templateBtn.addEventListener('click', () => {
+                    this.selectedTemplate = template.id;
+                    this.updateTemplatePillState();
+                    this.hideTemplateMenu();
+                });
+            });
+        }
+
+        // Position and show popup
+        this.positionPopup(this.templatePopup, this.templatePill);
+        document.body.appendChild(this.templatePopup);
+
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', this.handleOutsideClick.bind(this));
+        }, 0);
+    }
+
+    private showAttachmentsMenu() {
+        if (this.attachmentsPopup) {
+            this.hideAttachmentsMenu();
+            return;
+        }
+
+        this.attachmentsPopup = document.createElement('div');
+        this.attachmentsPopup.className = 'llm-attachments-popup';
+
+        // File picker option
+        const filePickerBtn = this.attachmentsPopup.createEl('button', {
+            cls: 'llm-popup-option',
+            text: 'Choose Files'
+        });
+        filePickerBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*,text/*,.pdf,.doc,.docx';
+            input.multiple = true;
+            input.onchange = (e) => {
+                const files = (e.target as HTMLInputElement).files;
+                if (files) {
+                    this.handleDroppedFiles(files);
+                }
+            };
+            input.click();
+            this.hideAttachmentsMenu();
         });
 
-        // Handle Enter key to add image
-        this.imagePathInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                this.addImageFromInput();
+        // Path input option
+        const pathInputBtn = this.attachmentsPopup.createEl('button', {
+            cls: 'llm-popup-option',
+            text: 'Enter Path'
+        });
+        pathInputBtn.addEventListener('click', () => {
+            const path = prompt('Enter file path:');
+            if (path) {
+                this.addImage(path);
             }
+            this.hideAttachmentsMenu();
         });
+
+        // Position and show popup
+        this.positionPopup(this.attachmentsPopup, this.attachmentsPill);
+        document.body.appendChild(this.attachmentsPopup);
+
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', this.handleOutsideClick.bind(this));
+        }, 0);
     }
 
-    private validateImagePath(input: HTMLInputElement) {
-        const value = input.value.trim();
+    private showCidMenu() {
+        if (this.cidPopup) {
+            this.hideCidMenu();
+            return;
+        }
 
-        // Remove existing classes
-        input.classList.remove('has-image', 'data-url-image', 'path-image', 'invalid-image');
+        this.cidPopup = document.createElement('div');
+        this.cidPopup.className = 'llm-cid-popup';
 
-        if (value) {
-            if (value.startsWith('data:image/')) {
-                // Valid data URL
-                input.classList.add('has-image', 'data-url-image');
-            } else if (value.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg|pdf|txt|md|doc|docx)$/i)) {
-                // Path appears to be a supported file
-                input.classList.add('has-image', 'path-image');
+        // Current CID input
+        const cidLabel = this.cidPopup.createEl('div', {
+            cls: 'llm-popup-label',
+            text: 'Conversation ID:'
+        });
+
+        const cidInput = this.cidPopup.createEl('input', {
+            type: 'text',
+            placeholder: 'Enter conversation ID',
+            cls: 'llm-popup-input'
+        });
+        cidInput.value = this.conversationId;
+        cidInput.addEventListener('input', (e) => {
+            this.conversationId = (e.target as HTMLInputElement).value;
+            this.updateCidPillState();
+        });
+
+        // Action buttons
+        const buttonsContainer = this.cidPopup.createDiv({ cls: 'llm-popup-buttons' });
+
+        const getFromNoteBtn = buttonsContainer.createEl('button', {
+            cls: 'llm-popup-button',
+            text: 'Get from Note'
+        });
+        getFromNoteBtn.addEventListener('click', () => {
+            this.onGetConversationId();
+            this.hideCidMenu();
+        });
+
+        const clearBtn = buttonsContainer.createEl('button', {
+            cls: 'llm-popup-button',
+            text: 'Clear'
+        });
+        clearBtn.addEventListener('click', () => {
+            this.conversationId = '';
+            cidInput.value = '';
+            this.updateCidPillState();
+            this.onClearConversationId();
+            this.hideCidMenu();
+        });
+
+        // Position and show popup
+        this.positionPopup(this.cidPopup, this.cidPill);
+        document.body.appendChild(this.cidPopup);
+
+        // Focus input
+        cidInput.focus();
+
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', this.handleOutsideClick.bind(this));
+        }, 0);
+    }
+
+    private positionPopup(popup: HTMLElement, anchor: HTMLElement) {
+        const rect = anchor.getBoundingClientRect();
+        popup.style.position = 'fixed';
+        popup.style.top = `${rect.bottom + 5}px`;
+        popup.style.left = `${rect.left}px`;
+        popup.style.zIndex = '1000';
+    }
+
+    private handleOutsideClick(e: MouseEvent) {
+        const target = e.target as HTMLElement;
+
+        if (this.attachmentsPopup && !this.attachmentsPopup.contains(target) && !this.attachmentsPill.contains(target)) {
+            this.hideAttachmentsMenu();
+        }
+
+        if (this.templatePopup && !this.templatePopup.contains(target) && !this.templatePill.contains(target)) {
+            this.hideTemplateMenu();
+        }
+
+        if (this.cidPopup && !this.cidPopup.contains(target) && !this.cidPill.contains(target)) {
+            this.hideCidMenu();
+        }
+    }
+
+    private hideAttachmentsMenu() {
+        if (this.attachmentsPopup) {
+            document.body.removeChild(this.attachmentsPopup);
+            this.attachmentsPopup = null;
+            document.removeEventListener('click', this.handleOutsideClick.bind(this));
+        }
+    }
+
+    private hideCidMenu() {
+        if (this.cidPopup) {
+            document.body.removeChild(this.cidPopup);
+            this.cidPopup = null;
+            document.removeEventListener('click', this.handleOutsideClick.bind(this));
+        }
+    }
+
+    private hideTemplateMenu() {
+        if (this.templatePopup) {
+            document.body.removeChild(this.templatePopup);
+            this.templatePopup = null;
+            document.removeEventListener('click', this.handleOutsideClick.bind(this));
+        }
+    }
+
+    private updateCidPillState() {
+        if (this.conversationId) {
+            this.cidPill.classList.add('active');
+            this.cidPill.textContent = `CID: ${this.conversationId.slice(0, 8)}...`;
+        } else {
+            this.cidPill.classList.remove('active');
+            this.cidPill.textContent = 'CID';
+        }
+    }
+
+    private updateTemplatePillState() {
+        if (this.selectedTemplate) {
+            this.templatePill.classList.add('active');
+            // Find the template label
+            const template = this.configData?.templates.find(t => t.id === this.selectedTemplate);
+            const label = template?.label || this.selectedTemplate;
+            this.templatePill.textContent = `模板: ${label.length > 8 ? label.slice(0, 8) + '...' : label}`;
+        } else {
+            this.templatePill.classList.remove('active');
+            this.templatePill.textContent = '模板';
+        }
+    }
+
+    private handleModelChange() {
+        if (this.modelSelector.value === 'custom') {
+            const customModel = prompt('Enter custom model ID:');
+            if (customModel) {
+                // Add custom option temporarily
+                const option = this.modelSelector.createEl('option');
+                option.value = customModel;
+                option.textContent = customModel;
+                this.modelSelector.value = customModel;
             } else {
-                // Possibly valid path (could be any document type)
-                input.classList.add('has-image', 'path-image');
+                // Reset to first option if cancelled
+                this.modelSelector.value = this.configData?.models[0]?.id || '';
             }
         }
+    }
+
+
+
+    private createLegacyElements() {
+        // Create hidden elements for backward compatibility
+        const hiddenContainer = this.container.createDiv({ cls: 'llm-legacy-hidden' });
+        hiddenContainer.style.display = 'none';
+
+        this.conversationIdInput = hiddenContainer.createEl('input', { type: 'text' });
+        this.patternInput = hiddenContainer.createEl('input', { type: 'text' });
+        this.imagePathInput = hiddenContainer.createEl('input', { type: 'text' });
+        this.imageInputContainer = hiddenContainer.createDiv();
+        this.addImageButton = hiddenContainer.createEl('button');
     }
 
     private addImageFromInput() {
@@ -236,6 +939,10 @@ export class InputArea {
         const cursorPosition = target.selectionStart;
         const textBeforeCursor = target.value.substring(0, cursorPosition);
 
+        // Auto-resize textarea
+        this.autoResizeTextarea();
+
+        // Handle @ command autocomplete
         if (textBeforeCursor.endsWith('@')) {
             this.showCommandDropdown();
         } else {
@@ -244,20 +951,44 @@ export class InputArea {
     }
 
     private handlePromptKeydown(e: KeyboardEvent) {
-        if (!this.dropdown) return;
-
-        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-            e.preventDefault();
-            // Handle selection navigation
-        } else if (e.key === 'Enter' && this.dropdown.style.display !== 'none') {
-            e.preventDefault();
-            const selected = this.dropdown.querySelector('.selected');
-            if (selected) {
-                this.insertCommand(selected.textContent || '');
+        // Handle dropdown navigation first
+        if (this.dropdown && this.dropdown.style.display !== 'none') {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                // Handle selection navigation
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selected = this.dropdown.querySelector('.selected');
+                if (selected) {
+                    this.insertCommand(selected.textContent || '');
+                }
+                return;
+            } else if (e.key === 'Escape') {
+                this.hideCommandDropdown();
+                return;
             }
-        } else if (e.key === 'Escape') {
-            this.hideCommandDropdown();
         }
+
+        // Handle Ctrl+Enter for submit
+        if (e.key === 'Enter' && e.ctrlKey) {
+            e.preventDefault();
+            this.handleSendMessage();
+        } else if (e.key === 'ArrowUp' && this.promptInput.value === '') {
+            // History navigation when input is empty
+            e.preventDefault();
+            // TODO: Implement history navigation
+        } else if (e.key === 'Escape') {
+            // Clear input on Escape
+            this.promptInput.value = '';
+            this.autoResizeTextarea();
+        }
+    }
+
+    private autoResizeTextarea() {
+        const textarea = this.promptInput;
+        textarea.style.height = 'auto';
+        const newHeight = Math.min(Math.max(textarea.scrollHeight, 20), 120);
+        textarea.style.height = newHeight + 'px';
     }
 
     private showCommandDropdown() {
@@ -407,13 +1138,18 @@ export class InputArea {
     }
 
     private handleSendMessage() {
-        const prompt = this.promptInput.value.trim();
-        if (!prompt) {
-            new Notice('Please enter a message');
-            return;
+        if (this.isProcessing) {
+            // Cancel current request
+            this.onCancelRequest();
+        } else {
+            // Send new message
+            const prompt = this.promptInput.value.trim();
+            if (!prompt) {
+                new Notice('Please enter a message');
+                return;
+            }
+            this.onSendMessage();
         }
-
-        this.onSendMessage();
     }
 
     // Public methods
@@ -427,12 +1163,28 @@ export class InputArea {
         this.clearImages();
     }
 
-    setConversationId(id: string) {
-        this.conversationIdInput.value = id;
-    }
+    private validateImagePath(input: HTMLInputElement) {
+        const path = input.value.trim();
 
-    clearConversationId() {
-        this.conversationIdInput.value = '';
+        // Remove all validation classes first
+        input.classList.remove('data-url-image', 'path-image', 'invalid-image');
+
+        if (!path) {
+            return;
+        }
+
+        // Check if it's a data URL (base64 image)
+        if (path.startsWith('data:image/')) {
+            input.classList.add('data-url-image');
+            return;
+        }
+
+        // Check if it's a valid file path using cross-platform utility
+        if (hasImageExtension(path)) {
+            input.classList.add('path-image');
+        } else {
+            input.classList.add('invalid-image');
+        }
     }
 
     getPromptValue(): string {
@@ -448,35 +1200,121 @@ export class InputArea {
     }
 
     setLoading(loading: boolean) {
-        this.sendButton.disabled = loading;
+        this.isProcessing = loading;
         this.promptInput.disabled = loading;
 
         if (loading) {
-            this.sendButton.innerHTML = 'Sending...';
+            // Switch to stop icon and update tooltip
+            this.sendButton.innerHTML = StopIcon;
+            this.sendButton.setAttribute('data-tooltip', 'Cancel');
+            this.sendButton.classList.add('llm-button-processing');
+            
+            // Show "Thinking..." status
+            if (this.statusText) {
+                this.statusText.textContent = 'Thinking...';
+                this.statusText.style.display = 'block';
+            }
         } else {
+            // Switch back to send icon and update tooltip
             this.sendButton.innerHTML = SendIcon;
+            this.sendButton.setAttribute('data-tooltip', 'Submit');
+            this.sendButton.classList.remove('llm-button-processing');
+            
+            // Hide status text
+            if (this.statusText) {
+                this.statusText.style.display = 'none';
+            }
+        }
+    }
+
+    showCancelled() {
+        // Brief cancellation feedback
+        if (this.statusText) {
+            this.statusText.textContent = 'Request cancelled';
+            this.statusText.style.display = 'block';
+            
+            // Hide after 1 second
+            setTimeout(() => {
+                if (this.statusText) {
+                    this.statusText.style.display = 'none';
+                }
+            }, 1000);
         }
     }
 
     setDefaultModel(model: string) {
-        if (!this.modelInput.value) {
-            this.modelInput.value = model;
+        if (this.modelSelector && !this.modelSelector.value) {
+            this.modelSelector.value = model;
         }
     }
 
     getModelValue(): string {
-        return this.modelInput.value;
+        return this.modelSelector?.value || '';
     }
 
     getPatternValue(): string {
-        return this.patternInput.value;
+        return this.selectedTemplate;
     }
 
     setPatternValue(value: string) {
-        this.patternInput.value = value;
+        // Clear the template selection (used after sending message)
+        this.selectedTemplate = '';
+        this.updateTemplatePillState();
     }
 
     getConversationId(): string {
-        return this.conversationIdInput.value;
+        return this.conversationId;
+    }
+
+    setConversationId(id: string) {
+        this.conversationId = id;
+        this.updateCidPillState();
+        if (this.conversationIdInput) {
+            this.conversationIdInput.value = id;
+        }
+    }
+
+    clearConversationId() {
+        this.conversationId = '';
+        this.updateCidPillState();
+        if (this.conversationIdInput) {
+            this.conversationIdInput.value = '';
+        }
+    }
+
+    /**
+     * Set MCP client service for status monitoring
+     */
+    setMCPClientService(mcpClientService: MCPClientService): void {
+        this.mcpClientService = mcpClientService;
+        this.updateMCPStatusPill();
+    }
+
+    /**
+     * Update MCP status pill
+     */
+    private updateMCPStatusPill(): void {
+        if (!this.mcpStatusPill) return;
+
+        if (!this.mcpClientService) {
+            this.mcpStatusPill.style.display = 'none';
+            return;
+        }
+
+        const stats = this.mcpClientService.getStats();
+        const isConnected = stats.connectedServers > 0;
+
+        this.mcpStatusPill.style.display = 'flex';
+        this.mcpStatusPill.textContent = `MCP: ${stats.connectedServers}/${stats.totalServers}`;
+
+        if (isConnected) {
+            this.mcpStatusPill.classList.remove('mcp-disconnected');
+            this.mcpStatusPill.classList.add('mcp-connected');
+            this.mcpStatusPill.title = `${stats.connectedServers} MCP servers connected, ${stats.totalTools} tools available`;
+        } else {
+            this.mcpStatusPill.classList.remove('mcp-connected');
+            this.mcpStatusPill.classList.add('mcp-disconnected');
+            this.mcpStatusPill.title = 'No MCP servers connected';
+        }
     }
 }

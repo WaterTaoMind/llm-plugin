@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "version": "node version-bump.mjs && git add manifest.json versions.json",
+    "install-agent": "node scripts/install-agent.js",
+    "setup-agentic": "npm run install-agent"
   },
   "keywords": [],
   "author": "",
@@ -27,10 +29,13 @@
     "typescript": "4.7.4"
   },
   "dependencies": {
+    "@google/genai": "^1.9.0",
+    "@modelcontextprotocol/sdk": "^1.13.2",
     "@types/he": "^1.2.3",
     "@types/react": "^18.3.9",
     "he": "^1.2.0",
     "markdown-it": "^14.1.0",
+    "pocketflow": "^1.0.4",
     "react": "^18.3.1",
     "shell-escape": "^0.2.0"
   }

@@ -6,6 +6,8 @@ export class StyleManager {
         this.addImagePreviewStyles();
         this.addImageInputStyles();
         this.addChatStyles();
+        this.addMCPStyles();
+        this.addButtonCancellationStyles();
     }
 
     removeStyles() {
@@ -348,6 +350,7 @@ export class StyleManager {
                 gap: 12px;
             }
 
+
             .llm-chat-history {
                 flex: 1;
                 overflow-y: auto;
@@ -405,6 +408,374 @@ export class StyleManager {
                 background: var(--background-primary-alt);
                 border: 1px solid var(--background-modifier-border);
                 border-radius: 4px;
+            }
+        `);
+        this.styleElements.push(styleEl);
+    }
+
+    private addMCPStyles() {
+        const styleEl = this.createStyleElement('llm-mcp-styles', `
+            .mcp-server-list {
+                margin: 1em 0;
+            }
+
+            .mcp-server-item {
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                padding: 1em;
+                margin: 0.5em 0;
+                background: var(--background-secondary);
+            }
+
+            .mcp-server-header {
+                margin-bottom: 1em;
+                padding-bottom: 0.5em;
+                border-bottom: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-status-enabled {
+                color: var(--text-success);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-disabled {
+                color: var(--text-muted);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-connected {
+                color: var(--color-green);
+                font-size: 0.9em;
+                font-weight: bold;
+            }
+
+            .mcp-server-status-connecting {
+                color: var(--color-orange);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-error {
+                color: var(--color-red);
+                font-size: 0.9em;
+            }
+
+            .mcp-server-status-disconnected {
+                color: var(--text-muted);
+                font-size: 0.9em;
+            }
+
+            .mcp-tools-count {
+                color: var(--text-accent);
+                font-size: 0.8em;
+                font-style: italic;
+            }
+
+            .mcp-server-item hr {
+                margin: 1em 0;
+                border: none;
+                border-top: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-item .setting-item {
+                border: none;
+                padding: 0.5em 0;
+            }
+
+            .mcp-server-item .setting-item:last-child {
+                border-bottom: none;
+            }
+
+            .mcp-server-actions {
+                display: flex;
+                gap: 0.5em;
+                margin-top: 1em;
+                padding-top: 1em;
+                border-top: 1px solid var(--background-modifier-border);
+            }
+
+            .mcp-server-actions button {
+                padding: 0.5em 1em;
+                border-radius: 4px;
+                border: 1px solid var(--background-modifier-border);
+                background: var(--background-primary);
+                color: var(--text-normal);
+                cursor: pointer;
+                font-size: 0.9em;
+            }
+
+            .mcp-server-actions button:hover {
+                background: var(--background-modifier-hover);
+            }
+
+            .mcp-server-actions button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+
+            .mcp-server-actions button.mod-cta {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                border-color: var(--interactive-accent);
+            }
+
+            .mcp-server-actions button.mod-warning {
+                background: var(--color-red);
+                color: white;
+                border-color: var(--color-red);
+            }
+
+            /* MCP Status Pill */
+            .mcp-status-pill {
+                font-size: 0.8em !important;
+                padding: 4px 8px !important;
+                min-width: auto !important;
+            }
+
+            .mcp-status-pill.mcp-connected {
+                background-color: var(--color-green) !important;
+                color: white !important;
+            }
+
+            .mcp-status-pill.mcp-disconnected {
+                background-color: var(--color-red) !important;
+                color: white !important;
+            }
+
+            .mcp-status-pill:hover {
+                opacity: 0.8;
+            }
+
+            /* Mode Selector Styles */
+            .llm-controls-container {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px;
+                background: var(--background-primary-alt);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+            }
+
+            .llm-mode-selector {
+                position: relative;
+                display: inline-block;
+            }
+
+            .llm-mode-current {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                background: var(--background-primary);
+                color: var(--text-normal);
+                cursor: pointer;
+                transition: all 0.15s ease;
+                font-size: 13px;
+                font-weight: 400;
+                min-width: 80px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+
+            .llm-mode-current:hover {
+                background: var(--background-modifier-hover);
+                border-color: var(--background-modifier-border-hover);
+            }
+
+            .llm-mode-current[aria-expanded="true"] {
+                border-color: var(--interactive-accent);
+                box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+            }
+
+            .llm-mode-dropdown {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                z-index: 1000;
+                margin-top: 4px;
+                background: var(--background-primary);
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 6px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                overflow: hidden;
+            }
+
+            .llm-mode-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border: none;
+                background: transparent;
+                color: var(--text-normal);
+                cursor: pointer;
+                transition: all 0.15s ease;
+                font-size: 13px;
+                font-weight: 400;
+                text-align: left;
+                width: 100%;
+            }
+
+            .llm-mode-option:hover {
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+            }
+
+            .llm-mode-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+
+            .llm-mode-icon svg {
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 1.5;
+            }
+
+            .llm-mode-label {
+                font-size: 13px;
+                font-weight: 400;
+                color: inherit;
+                white-space: nowrap;
+            }
+
+            .llm-mode-arrow {
+                margin-left: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0.6;
+            }
+
+            .llm-mode-arrow svg {
+                width: 12px;
+                height: 12px;
+                stroke: currentColor;
+                transition: transform 0.2s ease;
+            }
+
+            .llm-mode-current[aria-expanded="true"] .llm-mode-arrow svg {
+                transform: rotate(180deg);
+            }
+
+            /* Dark theme optimizations */
+            .theme-dark .llm-mode-current {
+                background: var(--background-primary-alt);
+                border-color: var(--background-modifier-border-hover);
+            }
+
+            .theme-dark .llm-mode-dropdown {
+                background: var(--background-primary-alt);
+                border-color: var(--background-modifier-border-hover);
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            }
+
+            .llm-model-selector {
+                flex: 1;
+                padding: 6px 10px;
+                border: 1px solid var(--background-modifier-border);
+                border-radius: 4px;
+                background: var(--background-primary);
+                color: var(--text-normal);
+                font-size: 13px;
+                min-width: 120px;
+            }
+
+            .llm-model-selector:focus {
+                outline: none;
+                border-color: var(--interactive-accent);
+                background: var(--background-primary-alt);
+            }
+
+            .llm-unified-send-button {
+                padding: 6px 12px;
+                border: none;
+                border-radius: 4px;
+                background: var(--interactive-accent);
+                color: var(--text-on-accent);
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .llm-unified-send-button:hover {
+                background: var(--interactive-accent-hover);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            .llm-unified-send-button:active {
+                transform: translateY(0);
+                box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+            }
+
+            .llm-unified-send-button svg {
+                width: 16px;
+                height: 16px;
+                fill: currentColor;
+            }
+        `);
+        this.styleElements.push(styleEl);
+    }
+
+    private addButtonCancellationStyles() {
+        const styleEl = this.createStyleElement('llm-button-cancellation-styles', `
+            /* Button processing state */
+            .llm-button-processing {
+                background-color: var(--interactive-accent) !important;
+                color: var(--text-on-accent) !important;
+            }
+
+            /* Status text styling */
+            .llm-status-text {
+                font-size: 12px;
+                color: var(--text-muted);
+                margin-top: 4px;
+                text-align: center;
+                display: none;
+            }
+
+            /* Tooltip styles */
+            [data-tooltip] {
+                position: relative;
+            }
+
+            [data-tooltip]:hover::after {
+                content: attr(data-tooltip);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--background-secondary);
+                color: var(--text-normal);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 12px;
+                white-space: nowrap;
+                z-index: 1000;
+                border: 1px solid var(--background-modifier-border);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            }
+
+            [data-tooltip]:hover::before {
+                content: '';
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%) translateY(100%);
+                width: 0;
+                height: 0;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid var(--background-modifier-border);
+                z-index: 1000;
             }
         `);
         this.styleElements.push(styleEl);

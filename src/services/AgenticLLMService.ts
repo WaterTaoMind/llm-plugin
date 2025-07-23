@@ -1,0 +1,278 @@
+import { LLMRequest, LLMResponse, LLMPluginSettings } from '../core/types';
+import { MCPClientService } from './MCPClientService';
+import { ReActFlow } from '../agents/ReActFlow';
+import { LLMWilsonProvider } from '../agents/LLMWilsonProvider';
+import { MCPClientAdapter } from '../agents/MCPClientAdapter';
+import { ModelConfig, ProgressCallback } from '../agents/types';
+import { spawn, ChildProcess } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+
+/**
+ * Agentic LLM Service using TypeScript ReAct Agent
+ * 
+ * This service replaces simple LLM calls with a native TypeScript agentic ReAct system
+ * that can reason, plan, and use tools to accomplish complex tasks.
+ * 
+ * Replaces the previous Python subprocess approach with proper TypeScript integration.
+ */
+export class AgenticLLMService {
+    private mcpClientService?: MCPClientService;
+    private reActFlow?: ReActFlow;
+    private agentPath: string;
+
+    constructor(private settings: LLMPluginSettings) {
+        // Path to the ReAct agent implementation
+        this.agentPath = this.getAgentPath();
+    }
+
+    /**
+     * Set MCP client service for tool integration
+     */
+    setMCPClientService(mcpClientService: MCPClientService): void {
+        this.mcpClientService = mcpClientService;
+        this.initializeReActFlow();
+    }
+
+    /**
+     * Initialize the TypeScript ReAct Flow system
+     */
+    private initializeReActFlow(): void {
+        if (!this.mcpClientService) {
+            console.warn('Cannot initialize ReAct flow without MCP client service');
+            return;
+        }
+
+        try {
+            // Create LLM provider using FastAPI wrapper
+            const llmProvider = new LLMWilsonProvider(
+                this.settings.llmConnectorApiUrl || 'http://localhost:49153',
+                this.settings.llmConnectorApiKey || 'your_api_key'
+            );
+            
+            // Create MCP client adapter
+            const mcpClient = new MCPClientAdapter(this.mcpClientService);
+            
+            // Create model configuration using agent model config
+            const modelConfig: ModelConfig = this.createModelConfig();
+            
+            // Initialize the TypeScript ReAct Flow system with Gemini API key
+            const geminiApiKey = this.settings.geminiApiKey || '';
+            if (!geminiApiKey) {
+                console.warn('⚠️ Gemini API key not configured - image generation will be disabled');
+            }
+            
+            // Get plugin data path for settings.json access from MCP client service
+            const pluginDataPath = this.getPluginDataPath();
+            
+            this.reActFlow = new ReActFlow(llmProvider, mcpClient, modelConfig, geminiApiKey, pluginDataPath);
+            
+            console.log('✅ TypeScript ReAct Flow initialized successfully');
+        } catch (error) {
+            console.error('❌ Failed to initialize ReAct flow:', error);
+        }
+    }
+
+    /**
+     * Set progress callback for real-time updates
+     */
+    setProgressCallback(callback: ProgressCallback) {
+        this.progressCallback = callback;
+        if (this.reActFlow) {
+            this.reActFlow.setProgressCallback(callback);
+        }
+    }
+
+    private progressCallback?: ProgressCallback;
+
+    /**
+     * Send request to agentic system (always use PocketFlow ReAct in Agent mode)
+     */
+    async sendRequest(request: LLMRequest): Promise<LLMResponse> {
+        try {
+            // In Agent mode, always use the PocketFlow ReAct system - no complexity detection
+            console.log('🤖 Agent Mode: Using PocketFlow ReAct System');
+            return await this.callAgenticSystem(request);
+
+        } catch (error) {
+            console.error('Failed to send agentic request:', error);
+            return {
+                result: '',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    // Removed: isSimpleRequest() - complexity detection is now handled 
+    // at the LLMService level via explicit mode selection
+
+    /**
+     * Call simple LLM for basic requests
+     */
+    private async callSimpleLLM(request: LLMRequest): Promise<LLMResponse> {
+        // Use Simon Wilson's LLM CLI directly
+        return await this.callLLMCLI(request.prompt, request.model || 'gpt-4o-mini');
+    }
+
+    /**
+     * Call PocketFlow ReAct system for complex requests
+     */
+    private async callAgenticSystem(request: LLMRequest): Promise<LLMResponse> {
+        try {
+            console.log('🤖 Using TypeScript ReAct Agent...');
+
+            if (!this.reActFlow) {
+                const error = 'TypeScript ReAct Agent not initialized - cannot process in Agent mode';
+                console.error('❌', error);
+                return {
+                    result: '',
+                    error: error
+                };
+            }
+
+            // Set progress callback if available
+            if (this.progressCallback) {
+                this.reActFlow.setProgressCallback(this.progressCallback);
+            }
+
+            // Determine max steps based on request complexity
+            const maxSteps = this.getMaxStepsForRequest(request);
+            
+            // Execute the TypeScript ReAct Agent
+            const agentResult = await this.reActFlow.execute(request.prompt, maxSteps, request.signal);
+
+            return {
+                result: agentResult.result,
+                images: agentResult.images,
+                conversationId: request.conversationId
+            };
+
+        } catch (error) {
+            console.error('❌ TypeScript ReAct Agent error:', error);
+            return {
+                result: '',
+                error: error instanceof Error ? error.message : 'Flow execution failed'
+            };
+        }
+    }
+
+    /**
+     * Get maximum steps from settings
+     */
+    private getMaxStepsForRequest(request: LLMRequest): number {
+        // Use configurable agentMaxSteps from settings
+        return this.settings.agentMaxSteps || 20;
+    }
+
+    /**
+     * Check if TypeScript agent system is available
+     */
+    async isAgentAvailable(): Promise<boolean> {
+        try {
+            const llmPath = '/opt/homebrew/Caskroom/miniconda/base/envs/llm/bin/llm';
+            const llmExists = fs.existsSync(llmPath);
+            const agentInitialized = !!this.reActFlow;
+            
+            console.log(`🔍 TypeScript ReAct Agent availability check:`);
+            console.log(`   LLM CLI: ${llmExists ? '✅' : '❌'} (${llmPath})`);
+            console.log(`   ReAct Agent: ${agentInitialized ? '✅' : '❌'} (TypeScript)`);
+            console.log(`   MCP Client: ${!!this.mcpClientService ? '✅' : '❌'} (Service)`);
+            
+            return llmExists && agentInitialized && !!this.mcpClientService;
+        } catch (error) {
+            console.error('❌ Error checking agent availability:', error);
+            return false;
+        }
+    }
+
+
+    /**
+     * Call LLM API directly for simple requests
+     */
+    private async callLLMCLI(prompt: string, model: string): Promise<LLMResponse> {
+        try {
+            const llmProvider = new LLMWilsonProvider(
+                this.settings.llmConnectorApiUrl || 'http://localhost:49153',
+                this.settings.llmConnectorApiKey || 'your_api_key'
+            );
+            const result = await llmProvider.callLLM(prompt, model);
+            return { result };
+        } catch (error) {
+            throw new Error(`LLM API failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Create model configuration based on agent model config settings
+     */
+    private createModelConfig(): ModelConfig {
+        const agentConfig = this.settings.agentModelConfig;
+        
+        if (agentConfig?.configType === 'single') {
+            const model = agentConfig.singleModel || this.settings.defaultModel || 'g25fp';
+            return {
+                reasoning: model,
+                processing: model,
+                default: model
+            };
+        } else {
+            return {
+                reasoning: agentConfig?.dualModel?.reasoningModel || this.settings.defaultModel || 'g25fp',
+                processing: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp',
+                default: agentConfig?.dualModel?.processingModel || this.settings.defaultModel || 'g25fp'
+            };
+        }
+    }
+
+    /**
+     * Get plugin data directory path from MCP client service
+     */
+    private getPluginDataPath(): string | undefined {
+        if (!this.mcpClientService) {
+            console.warn('MCP client service not available for plugin data path access');
+            return undefined;
+        }
+        
+        try {
+            // Access the private method through type assertion
+            // This is safe since we're in the same codebase and know the implementation
+            const mcpService = this.mcpClientService as any;
+            if (mcpService.getPluginDataPath) {
+                return mcpService.getPluginDataPath();
+            }
+            
+            // Fallback: try to access the same logic directly
+            const app = mcpService.app;
+            if (app) {
+                const adapter = app.vault.adapter;
+                if (adapter && 'basePath' in adapter) {
+                    const vaultPath = (adapter as any).basePath || '';
+                    if (vaultPath) {
+                        return `${vaultPath}/.obsidian/plugins/unofficial-llm-integration`;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to get plugin data path from MCP client service:', error);
+        }
+        
+        return undefined;
+    }
+
+    /**
+     * Get path to the legacy agent directory (kept for compatibility)
+     */
+    private getAgentPath(): string {
+        // Legacy path - no longer used with TypeScript agent
+        return '/Users/zhonghaoning1/Work/AgentExplore';
+    }
+
+
+    /**
+     * Install TypeScript agent system
+     */
+    async installAgent(): Promise<void> {
+        console.log('🔧 TypeScript ReAct Agent - No installation required');
+        console.log('✅ Agent system ready - using native TypeScript implementation');
+    }
+}
