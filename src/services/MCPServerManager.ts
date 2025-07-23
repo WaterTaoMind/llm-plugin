@@ -56,9 +56,9 @@ export class MCPServerManager {
                 // Suppress debug output that might interfere with JSON parsing
                 LOG_LEVEL: 'ERROR',
                 // Explicitly pass API keys to ensure they're available
-                YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || 'AIzaSyBTecaDmWIOsbs93tLutJu2XnsdNq7gL6Y',
-                Assemblyai_api_key: process.env.Assemblyai_api_key || 'b09222ebbc344e1ebc659a90c89f4cda',
-                Groq_api_key: process.env.Groq_api_key || '[REMOVED_GROQ_API_KEY]'
+                YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
+                Assemblyai_api_key: process.env.Assemblyai_api_key,
+                Groq_api_key: process.env.Groq_api_key
             };
             
             console.log(`🔧 MCP Server ${config.name}: Enhanced environment prepared`);
